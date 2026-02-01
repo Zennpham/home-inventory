@@ -1,22 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-    Plus,
-    ChevronRight,
-    ChevronDown,
-    MapPin,
-    Trash2,
-    Edit2,
-    X,
-    Save,
-    Layout,
-    Box,
-    Archive,
-    Home
-} from 'lucide-react';
-import Breadcrumbs from '@/components/Breadcrumbs';
+import { Plus, MapPin, Trash2, Edit2, X, Save, Home, Layout, Box, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 
 export default function LocationManager() {
     const [locations, setLocations] = useState<any[]>([]);
@@ -65,13 +51,10 @@ export default function LocationManager() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('Bạn có chắc muốn xóa vị trí này?')) return;
+        if (!confirm('Xóa vị trí này?')) return;
         const res = await fetch(`/api/locations/${id}`, { method: 'DELETE' });
         if (res.ok) {
             fetchLocations();
-        } else {
-            const err = await res.json();
-            alert(err.error);
         }
     };
 
@@ -92,141 +75,148 @@ export default function LocationManager() {
         if (children.length === 0 && parentId !== null) return null;
 
         return (
-            <div className={`space-y-4 ${depth > 0 ? 'ml-8 mt-4 border-l-2 border-zinc-100 dark:border-zinc-800 pl-4' : ''}`}>
+            <div className={depth > 0 ? 'ml-6 mt-2' : ''}>
                 {children.map(loc => (
-                    <motion.div
-                        key={loc._id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="group"
-                    >
-                        <div className="flex items-center justify-between p-4 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 hover:shadow-md transition-all">
-                            <div className="flex items-center gap-4">
-                                <div className={`p-3 rounded-xl ${loc.type === 'room' ? 'bg-indigo-50 text-indigo-500' :
-                                        loc.type === 'cabinet' ? 'bg-emerald-50 text-emerald-500' :
-                                            'bg-amber-50 text-amber-500'
-                                    }`}>
-                                    {loc.type === 'room' ? <Home className="w-5 h-5" /> :
-                                        loc.type === 'cabinet' ? <Layout className="w-5 h-5" /> :
-                                            <Box className="w-5 h-5" />}
-                                </div>
-                                <div>
-                                    <h4 className="font-bold text-sm tracking-tight">{loc.name}</h4>
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{loc.nfcId}</p>
-                                </div>
+                    <div key={loc._id} className="mb-2">
+                        <div className="flex items-center justify-between p-3 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-zinc-900 dark:hover:border-white transition-colors group">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <Link href={`/location/${loc.nfcId}`} className="flex items-center gap-3 flex-1 min-w-0 group-hover:opacity-80 transition-opacity">
+                                    <div className="w-8 h-8 bg-zinc-100 dark:bg-zinc-900 rounded-lg flex items-center justify-center flex-shrink-0">
+                                        {loc.type === 'room' ? <Home className="w-4 h-4" /> :
+                                            loc.type === 'cabinet' ? <Layout className="w-4 h-4" /> :
+                                                <Box className="w-4 h-4" />}
+                                    </div>
+                                    <div className="truncate">
+                                        <p className="font-medium text-sm truncate">{loc.name}</p>
+                                        <p className="text-xs text-zinc-500 truncate">{loc.nfcId}</p>
+                                    </div>
+                                </Link>
                             </div>
-                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => startEdit(loc)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-indigo-500 transition-colors"><Edit2 className="w-4 h-4" /></button>
-                                <button onClick={() => handleDelete(loc._id)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-rose-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => startEdit(loc)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg">
+                                    <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => handleDelete(loc._id)} className="p-2 hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-600 rounded-lg">
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
                             </div>
                         </div>
                         {renderTree(loc._id, depth + 1)}
-                    </motion.div>
+                    </div>
                 ))}
             </div>
         );
     };
 
-    if (loading) return null;
+    if (loading) return (
+        <div className="min-h-screen flex items-center justify-center">
+            <div className="w-8 h-8 border-2 border-zinc-900 dark:border-white border-t-transparent rounded-full animate-spin"></div>
+        </div>
+    );
 
     return (
-        <div className="min-h-screen p-6 md:p-12 max-w-5xl mx-auto space-y-12">
-            <Breadcrumbs items={[{ label: 'Quản lý Vị trí' }]} />
-
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <div>
-                    <h1 className="text-4xl font-black tracking-tight mb-2">Quản lý <span className="gradient-text">Cấu trúc Kho</span></h1>
-                    <p className="text-zinc-500 font-medium">Xây dựng và tổ chức cây thư mục lưu trữ của bạn.</p>
+        <div className="min-h-screen p-4 md:p-8 max-w-[1400px] mx-auto">
+            <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                    <Link href="/" className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors">
+                        <ArrowLeft className="w-5 h-5" />
+                    </Link>
+                    <div>
+                        <h1 className="text-2xl md:text-3xl font-bold mb-1">Quản lý vị trí</h1>
+                        <p className="text-sm text-zinc-500">{locations.length} vị trí</p>
+                    </div>
                 </div>
                 <button
-                    onClick={() => { setIsAdding(true); setEditingLoc(null); }}
-                    className="px-8 py-4 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-[32px] font-black flex items-center gap-3 hover:scale-105 transition-all shadow-xl"
+                    onClick={() => { setIsAdding(!isAdding); setEditingLoc(null); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-full text-sm font-medium hover:scale-105 transition-transform"
                 >
-                    <Plus className="w-6 h-6" /> Thêm cấp mới
+                    {isAdding ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    {isAdding ? 'Đóng' : 'Thêm'}
                 </button>
-            </header>
+            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-                <div className="lg:col-span-2 space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
                     {renderTree(null)}
                 </div>
 
-                <aside className="relative">
-                    <AnimatePresence>
-                        {isAdding && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 20 }}
-                                className="glass-card p-8 sticky top-12"
-                            >
-                                <div className="flex items-center justify-between mb-8">
-                                    <h3 className="text-xl font-black">{editingLoc ? 'Sửa vị trí' : 'Tạo vị trí mới'}</h3>
-                                    <button onClick={() => setIsAdding(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl transition-colors"><X className="w-5 h-5" /></button>
-                                </div>
+                {isAdding && (
+                    <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl p-5">
+                        <h3 className="text-lg font-bold mb-4">{editingLoc ? 'Sửa vị trí' : 'Thêm vị trí'}</h3>
 
-                                <form onSubmit={handleSubmit} className="space-y-6">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400">Tên vị trí</label>
-                                        <input
-                                            required
-                                            value={formData.name}
-                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                            className="w-full bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold"
-                                            placeholder="Phòng Khách, Tủ lạnh..."
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400">NFC ID (Mã định danh)</label>
-                                        <input
-                                            required
-                                            disabled={!!editingLoc}
-                                            value={formData.nfcId}
-                                            onChange={(e) => setFormData({ ...formData, nfcId: e.target.value })}
-                                            className="w-full bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm disabled:opacity-50"
-                                            placeholder="VD: LOC_KITCH_001"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400">Vị trí cha (Parent)</label>
-                                        <select
-                                            value={formData.parentId}
-                                            onChange={(e) => setFormData({ ...formData, parentId: e.target.value })}
-                                            className="w-full bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none"
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Tên *</label>
+                                <input
+                                    required
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    placeholder="Phòng khách, Tủ lạnh..."
+                                    className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">NFC ID *</label>
+                                <input
+                                    required
+                                    disabled={!!editingLoc}
+                                    value={formData.nfcId}
+                                    onChange={(e) => setFormData({ ...formData, nfcId: e.target.value })}
+                                    placeholder="ROOM_LIVING"
+                                    className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent font-mono text-sm disabled:opacity-50"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Vị trí cha</label>
+                                <select
+                                    value={formData.parentId}
+                                    onChange={(e) => setFormData({ ...formData, parentId: e.target.value })}
+                                    className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                >
+                                    <option value="">Không có (Root)</option>
+                                    {locations.filter(l => l._id !== editingLoc?._id).map(loc => (
+                                        <option key={loc._id} value={loc._id}>{loc.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Loại</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {['room', 'cabinet', 'shelf'].map(type => (
+                                        <button
+                                            key={type}
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, type })}
+                                            className={`py-2 rounded-lg text-xs font-medium border transition-colors ${formData.type === type
+                                                ? 'border-zinc-900 dark:border-white bg-zinc-900 dark:bg-white text-white dark:text-black'
+                                                : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-white'
+                                                }`}
                                         >
-                                            <option value="">Không có (Gốc)</option>
-                                            {locations.filter(l => l._id !== editingLoc?._id).map(loc => (
-                                                <option key={loc._id} value={loc._id}>{loc.path || loc.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400">Loại không gian</label>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            {['room', 'cabinet', 'shelf'].map(type => (
-                                                <button
-                                                    key={type}
-                                                    type="button"
-                                                    onClick={() => setFormData({ ...formData, type })}
-                                                    className={`py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${formData.type === type
-                                                            ? 'border-indigo-500 bg-indigo-500 text-white shadow-lg'
-                                                            : 'border-zinc-100 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300'
-                                                        }`}
-                                                >
-                                                    {type === 'room' ? 'Phòng' : type === 'cabinet' ? 'Tủ' : 'Kệ/Hộp'}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
+                                            {type === 'room' ? 'Phòng' : type === 'cabinet' ? 'Tủ' : 'Kệ'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
 
-                                    <button type="submit" className="w-full bg-indigo-600 text-white py-5 rounded-3xl font-black text-lg flex items-center justify-center gap-3 shadow-xl hover:scale-[1.02] active:scale-95 transition-all mt-4">
-                                        <Save className="w-6 h-6" /> {editingLoc ? 'Lưu thay đổi' : 'Tạo ngay'}
-                                    </button>
-                                </form>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </aside>
+                            <div className="flex gap-2 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAdding(false)}
+                                    className="flex-1 px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+                                >
+                                    Hủy
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 px-4 py-3 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg hover:scale-105 transition-transform flex items-center justify-center gap-2"
+                                >
+                                    <Save className="w-4 h-4" />
+                                    Lưu
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
             </div>
         </div>
     );

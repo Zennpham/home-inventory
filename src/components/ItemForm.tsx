@@ -1,26 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import {
-    Save,
-    X,
-    Camera,
-    Barcode,
-    Calendar,
-    MapPin,
-    Tag,
-    Package,
-    Plus,
-    Minus,
-    AlertCircle,
-    Info,
-    User,
-    CreditCard,
-    DollarSign,
-    Layers
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState } from 'react';
+import { Save, X, Camera, Barcode, MapPin, Plus, Minus, Calendar, DollarSign, User, Tag } from 'lucide-react';
 import BarcodeScanner from './BarcodeScanner';
+import CascadingLocationPicker from './CascadingLocationPicker';
 
 interface ItemFormProps {
     initialData?: any;
@@ -29,7 +12,8 @@ interface ItemFormProps {
     onCancel: () => void;
 }
 
-export default function ItemForm({ initialData, locations, onSubmit, onCancel }: ItemFormProps) {
+export default function ItemForm({ initialData, locations: initialLocations, onSubmit, onCancel }: ItemFormProps) {
+    const [locations, setLocations] = useState(initialLocations);
     const [formData, setFormData] = useState({
         name: initialData?.name || '',
         quantity: initialData?.quantity || 1,
@@ -41,10 +25,10 @@ export default function ItemForm({ initialData, locations, onSubmit, onCancel }:
         price: initialData?.price || 0,
         status: initialData?.status || 'in stock',
         note: initialData?.note || '',
-        itemInfo: initialData?.itemInfo ? JSON.stringify(initialData.itemInfo, null, 2) : '',
         minStock: initialData?.minStock || 1,
         barcode: initialData?.barcode || '',
         imageUrl: initialData?.imageUrl || '',
+        expiryDate: initialData?.expiryDate ? new Date(initialData.expiryDate).toISOString().split('T')[0] : '',
         batches: initialData?.batches || [],
         brand: initialData?.brand || '',
         modelNumber: initialData?.modelNumber || '',
@@ -53,338 +37,460 @@ export default function ItemForm({ initialData, locations, onSubmit, onCancel }:
     });
 
     const [showScanner, setShowScanner] = useState(false);
+    const [showLocationPicker, setShowLocationPicker] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [activeTab, setActiveTab] = useState<'basic' | 'batches' | 'advanced'>('basic');
+
+    // Sync locations from props
+    React.useEffect(() => {
+        if (initialLocations.length > 0) {
+            setLocations(initialLocations);
+        }
+    }, [initialLocations]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
-        const val = type === 'checkbox' ? (e.target as HTMLInputElement).checked : value;
-        setFormData(prev => ({ ...prev, [name]: val }));
+        setFormData(prev => ({ ...prev, [name]: type === 'number' ? Number(value) : value }));
     };
 
-    const addBatch = () => {
-        setFormData(prev => ({
-            ...prev,
-            batches: [...prev.batches, { id: Math.random().toString(36).substr(2, 9), quantity: 1, expiryDate: '', lastChecked: new Date() }]
-        }));
+    const handleAddLocation = async (parentId: string | null, name: string, type: string) => {
+        try {
+            // Auto-generate a simple NFC ID for manual entries
+            const nfcId = `loc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+            const res = await fetch('/api/locations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name,
+                    type,
+                    parentId,
+                    nfcId
+                })
+            });
+
+            if (res.ok) {
+                const newLoc = await res.json();
+                setLocations(prev => [...prev, newLoc]);
+                // Automatically select the new location if it was created at the current level?
+                // Or just let the user continue. 
+                // The picker will update because 'locations' state changed.
+            }
+        } catch (err) {
+            console.error("Failed to add location", err);
+        }
     };
 
-    const updateBatch = (index: number, field: string, value: any) => {
-        const newBatches = [...formData.batches];
-        newBatches[index] = { ...newBatches[index], [field]: value };
-        setFormData(prev => ({ ...prev, batches: newBatches }));
-    };
+    const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Compress image using Canvas
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
 
-    const removeBatch = (index: number) => {
-        setFormData(prev => ({ ...prev, batches: prev.batches.filter((_: any, i: number) => i !== index) }));
-    };
+                    // Max dimension (e.g. 800px)
+                    const MAX_WIDTH = 800;
+                    const scaleSize = MAX_WIDTH / img.width;
+                    const width = (img.width > MAX_WIDTH) ? MAX_WIDTH : img.width;
+                    const height = (img.width > MAX_WIDTH) ? img.height * scaleSize : img.height;
 
-    const handleQuantityChange = (delta: number) => {
-        setFormData(prev => ({ ...prev, quantity: Math.max(0, prev.quantity + delta) }));
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    ctx?.drawImage(img, 0, 0, width, height);
+
+                    // Convert to Base64 with quality 0.6
+                    const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+                    setFormData(prev => ({ ...prev, imageUrl: compressedBase64 }));
+                };
+                img.src = event.target?.result as string;
+            };
+            reader.readAsDataURL(file);
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            const submissionData = {
-                ...formData,
-                itemInfo: formData.itemInfo ? JSON.parse(formData.itemInfo) : {}
-            };
-            await onSubmit(submissionData);
-        } catch (err) {
-            console.error('Invalid JSON in itemInfo');
-            // fallback if JSON fails
-            await onSubmit({ ...formData, itemInfo: {} });
+            await onSubmit(formData);
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="bg-white dark:bg-zinc-950 min-h-screen">
-            <form onSubmit={handleSubmit} className="max-w-4xl mx-auto p-6 md:p-12 space-y-12">
+        <div className="min-h-screen bg-white dark:bg-black">
+            <form onSubmit={handleSubmit} className="max-w-2xl mx-auto p-4 md:p-8">
                 {/* Header */}
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-4xl font-black">{initialData ? 'Chỉnh sửa' : 'Thêm mới'} <span className="gradient-text">Món đồ</span></h2>
-                        <p className="text-zinc-500 font-medium">Hệ thống kho gia đình thông minh.</p>
-                    </div>
+                <div className="flex items-center justify-between mb-8">
+                    <h1 className="text-2xl font-bold">
+                        {initialData ? 'Sửa món đồ' : 'Thêm món đồ'}
+                    </h1>
                     <button
                         type="button"
                         onClick={onCancel}
-                        className="p-4 bg-zinc-100 dark:bg-zinc-900 rounded-2xl hover:bg-zinc-200 transition-colors"
+                        className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-900 rounded-lg transition-colors"
                     >
-                        <X className="w-6 h-6" />
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* Navigation Tabs */}
-                <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-2xl w-fit">
-                    {(['basic', 'batches', 'advanced'] as const).map(tab => (
-                        <button
-                            key={tab}
-                            type="button"
-                            onClick={() => setActiveTab(tab)}
-                            className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-white dark:bg-zinc-800 shadow-md text-indigo-500' : 'text-zinc-500 hover:text-zinc-700'
-                                }`}
-                        >
-                            {tab === 'basic' ? 'Cơ bản' : tab === 'batches' ? 'Lô sản phẩm' : 'Nâng cao'}
-                        </button>
-                    ))}
-                </div>
+                {/* Main Info */}
+                <div className="space-y-6">
+                    {/* Image URL or Camera */}
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Hình ảnh</label>
+                        <div className="flex gap-4 items-start">
+                            <div className="flex-1 space-y-3">
+                                {/* Option 1: URL Input */}
+                                <input
+                                    name="imageUrl"
+                                    value={formData.imageUrl}
+                                    onChange={handleChange}
+                                    placeholder="Dán URL ảnh hoặc chụp..."
+                                    className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent text-sm"
+                                />
 
-                <AnimatePresence mode="wait">
-                    {activeTab === 'basic' && (
-                        <motion.div
-                            key="basic"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            className="grid grid-cols-1 lg:grid-cols-2 gap-12"
-                        >
-                            {/* Visuals */}
-                            <div className="space-y-8">
-                                <div className="aspect-square rounded-[48px] bg-zinc-100 dark:bg-zinc-900 border-2 border-dashed border-zinc-200 dark:border-zinc-800 flex flex-col items-center justify-center relative overflow-hidden group">
-                                    {formData.imageUrl ? (
-                                        <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="text-center p-8">
-                                            <Camera className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
-                                            <p className="text-sm font-black text-zinc-400">Chưa có ảnh</p>
-                                        </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button type="button" className="px-8 py-3 bg-white text-black rounded-2xl font-black text-sm">Chỉnh sửa ảnh</button>
-                                    </div>
-                                </div>
-
-                                <div className="glass-card p-8 group">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2">
-                                            <Barcode className="w-4 h-4" /> Mã vạch sản phẩm
-                                        </label>
+                                {/* Option 2: Camera/Upload Button */}
+                                <div className="flex gap-2">
+                                    <label className="cursor-pointer flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors">
+                                        <Camera className="w-4 h-4" />
+                                        Chụp / Chọn ảnh
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            capture="environment" // Prefer rear camera on mobile
+                                            className="hidden"
+                                            onChange={handleImageCapture}
+                                        />
+                                    </label>
+                                    {formData.imageUrl && (
                                         <button
                                             type="button"
-                                            onClick={() => setShowScanner(true)}
-                                            className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-700 transition-all shadow-md"
+                                            onClick={() => setFormData(p => ({ ...p, imageUrl: '' }))}
+                                            className="px-4 py-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-lg text-sm font-medium transition-colors"
                                         >
-                                            Quét mã
+                                            Xóa ảnh
                                         </button>
-                                    </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Preview */}
+                            <div className="w-24 h-24 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-50 dark:bg-zinc-900 flex-shrink-0 flex items-center justify-center">
+                                {formData.imageUrl ? (
+                                    <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                                ) : (
+                                    <Camera className="w-8 h-8 text-zinc-300" />
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Name */}
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Tên món đồ *</label>
+                        <input
+                            required
+                            name="name"
+                            value={formData.name}
+                            onChange={handleChange}
+                            placeholder="VD: Sữa tươi TH True Milk"
+                            className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                        />
+                    </div>
+
+                    {/* Quantity & Unit */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Số lượng</label>
+                            <div className="flex items-center border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData(p => ({ ...p, quantity: Math.max(0, p.quantity - 1) }))}
+                                    className="px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                                >
+                                    <Minus className="w-4 h-4" />
+                                </button>
+                                <input
+                                    name="quantity"
+                                    type="number"
+                                    value={formData.quantity}
+                                    onChange={handleChange}
+                                    className="flex-1 text-center bg-transparent border-none outline-none font-bold text-lg"
+                                    min="0"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData(p => ({ ...p, quantity: p.quantity + 1 }))}
+                                    className="px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Đơn vị</label>
+                            <input
+                                name="unit"
+                                value={formData.unit}
+                                onChange={handleChange}
+                                placeholder="pcs, kg, lít..."
+                                className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Location with Cascading Picker */}
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Vị trí lưu trữ *</label>
+                        {showLocationPicker ? (
+                            <div className="space-y-2">
+                                <CascadingLocationPicker
+                                    locations={locations}
+                                    selectedId={formData.location}
+                                    onSelect={(id) => setFormData(p => ({ ...p, location: id }))}
+                                    onAddLocation={handleAddLocation}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowLocationPicker(false)}
+                                    className="text-sm text-indigo-500 font-bold hover:underline"
+                                >
+                                    Thu gọn
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setShowLocationPicker(true)}
+                                className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:border-zinc-900 dark:hover:border-white transition-colors text-left flex items-center gap-3 bg-zinc-50 dark:bg-zinc-900/50"
+                            >
+                                <MapPin className="w-5 h-5 text-zinc-400" />
+                                <span className="font-medium">
+                                    {locations.find(l => l._id === formData.location)?.name || 'Chọn vị trí...'}
+                                </span>
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Category & Status */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Danh mục</label>
+                            <div className="relative">
+                                <select
+                                    name="category"
+                                    value={formData.category}
+                                    onChange={handleChange}
+                                    className="w-full px-4 py-3 appearance-none border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                >
+                                    <option value="general">General</option>
+                                    <option value="food">Food</option>
+                                    <option value="electronics">Electronics</option>
+                                    <option value="medical">Medical</option>
+                                    <option value="clothing">Clothing</option>
+                                    <option value="tools">Tools</option>
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400"><path d="M1 1L5 5L9 1" /></svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Trạng thái</label>
+                            <div className="relative">
+                                <select
+                                    name="status"
+                                    value={formData.status}
+                                    onChange={handleChange}
+                                    className="w-full px-4 py-3 appearance-none border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                >
+                                    <option value="in stock">In Stock</option>
+                                    <option value="out of stock">Out of Stock</option>
+                                    <option value="reserved">Reserved</option>
+                                    <option value="critical">Critical</option>
+                                </select>
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400"><path d="M1 1L5 5L9 1" /></svg>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Barcode */}
+                    <div>
+                        <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+                            <Barcode className="w-4 h-4" />
+                            Mã vạch (tùy chọn)
+                        </label>
+                        <div className="flex gap-2">
+                            <input
+                                name="barcode"
+                                value={formData.barcode}
+                                onChange={handleChange}
+                                placeholder="Quét hoặc nhập mã..."
+                                className="flex-1 px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowScanner(true)}
+                                className="px-4 py-3 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg hover:scale-105 transition-transform"
+                            >
+                                Quét
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Expiry Date (for food) */}
+                    {formData.category === 'food' && (
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Hạn sử dụng <span className="text-rose-500">*</span></label>
+                            <input
+                                required
+                                name="expiryDate"
+                                type="date"
+                                value={formData.expiryDate}
+                                onChange={handleChange}
+                                className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                            />
+                        </div>
+                    )}
+
+                    {/* Electronics Fields */}
+                    {formData.category === 'electronics' && (
+                        <div className="space-y-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Thương hiệu</label>
                                     <input
-                                        name="barcode"
-                                        value={formData.barcode}
+                                        name="brand"
+                                        value={formData.brand}
                                         onChange={handleChange}
-                                        placeholder="Nhập thủ công hoặc quét..."
-                                        className="w-full bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl py-4 px-6 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono"
+                                        placeholder="Samsung, Apple..."
+                                        className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Model</label>
+                                    <input
+                                        name="modelNumber"
+                                        value={formData.modelNumber}
+                                        onChange={handleChange}
+                                        placeholder="S24 Ultra..."
+                                        className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
                                     />
                                 </div>
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Hạn bảo hành</label>
+                                <input
+                                    name="warrantyDate"
+                                    type="date"
+                                    value={formData.warrantyDate}
+                                    onChange={handleChange}
+                                    className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                />
+                            </div>
+                        </div>
+                    )}
 
-                            {/* Main Info */}
-                            <div className="space-y-6">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-zinc-400">Tên món đồ</label>
+                    {/* Additional Details - Collapsible */}
+                    <details className="border border-zinc-200 dark:border-zinc-800 rounded-lg">
+                        <summary className="px-4 py-3 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900 font-medium">
+                            Thông tin bổ sung (tùy chọn)
+                        </summary>
+                        <div className="p-4 space-y-4 border-t border-zinc-200 dark:border-zinc-800">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">
+                                        <User className="w-4 h-4 inline mr-1" />
+                                        Chủ sở hữu
+                                    </label>
                                     <input
-                                        required
-                                        name="name"
-                                        value={formData.name}
+                                        name="owner"
+                                        value={formData.owner}
                                         onChange={handleChange}
-                                        className="w-full text-2xl font-black bg-zinc-50 dark:bg-zinc-900 border-none rounded-[28px] py-5 px-8 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                        placeholder="Tên sản phẩm..."
+                                        placeholder="Ngân, Chung..."
+                                        className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
                                     />
                                 </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400">Số lượng hiện tại</label>
-                                        <div className="flex items-center bg-zinc-50 dark:bg-zinc-900 rounded-2xl p-1">
-                                            <button type="button" onClick={() => handleQuantityChange(-1)} className="p-4 hover:bg-white dark:hover:bg-zinc-800 rounded-xl transition-all"><Minus className="w-5 h-5" /></button>
-                                            <input name="quantity" type="number" value={formData.quantity} onChange={handleChange} className="w-full text-center bg-transparent border-none font-black text-2xl outline-none" />
-                                            <button type="button" onClick={() => handleQuantityChange(1)} className="p-4 hover:bg-white dark:hover:bg-zinc-800 rounded-xl transition-all"><Plus className="w-5 h-5" /></button>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400">Đơn vị</label>
-                                        <input name="unit" value={formData.unit} onChange={handleChange} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-5 px-6 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold" />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-zinc-400">Vị trí lưu trữ</label>
-                                    <div className="relative">
-                                        <MapPin className="absolute left-6 top-1/2 -translate-y-1/2 text-indigo-500 w-5 h-5" />
-                                        <select
-                                            name="location"
-                                            value={formData.location}
-                                            onChange={handleChange}
-                                            className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-5 pl-14 pr-6 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold appearance-none"
-                                        >
-                                            <option value="">Chọn vị trí...</option>
-                                            {locations.map(loc => <option key={loc._id} value={loc._id}>{loc.path || loc.name}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase tracking-widest text-zinc-400">Danh mục & Trạng thái</label>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <select
-                                            name="category"
-                                            value={formData.category}
-                                            onChange={(e) => {
-                                                handleChange(e);
-                                                // Reset sub-category fields when category changes for clean state
-                                                if (e.target.value !== 'electronics') {
-                                                    setFormData(prev => ({ ...prev, brand: '', modelNumber: '', warrantyDate: '', maintenanceFrequency: 0 }));
-                                                }
-                                            }}
-                                            className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-5 px-6 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold"
-                                        >
-                                            {['food', 'electronics', 'general', 'medical', 'clothing', 'tools'].map(cat => (
-                                                <option key={cat} value={cat}>{cat.toUpperCase()}</option>
-                                            ))}
-                                        </select>
-                                        <select name="status" value={formData.status} onChange={handleChange} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-5 px-6 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold">
-                                            {['in stock', 'out of stock', 'reserved', 'critical', 'damaged'].map(st => (
-                                                <option key={st} value={st}>{st.toUpperCase()}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {/* Conditional Electronics Section */}
-                                {formData.category === 'electronics' && (
-                                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black uppercase text-zinc-400">Thương hiệu</label>
-                                                <input name="brand" value={formData.brand} onChange={handleChange} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-3 px-4 font-bold" placeholder="Samsung, Apple..." />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black uppercase text-zinc-400">Model</label>
-                                                <input name="modelNumber" value={formData.modelNumber} onChange={handleChange} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-3 px-4 font-bold" placeholder="S24 Ultra..." />
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black uppercase text-zinc-400">Hạn bảo hành</label>
-                                                <input name="warrantyDate" type="date" value={formData.warrantyDate} onChange={handleChange} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-3 px-4 font-bold" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black uppercase text-zinc-400">Bảo trì (ngày)</label>
-                                                <input name="maintenanceFrequency" type="number" value={formData.maintenanceFrequency} onChange={handleChange} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-3 px-4 font-bold" placeholder="365" />
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {activeTab === 'batches' && (
-                        <motion.div
-                            key="batches"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            className="space-y-6"
-                        >
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-2xl font-black">Các lô sản phẩm <span className="text-indigo-500">(Batches)</span></h3>
-                                <button type="button" onClick={addBatch} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl hover:bg-indigo-600 hover:text-white transition-all"><Plus className="w-6 h-6" /></button>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {formData.batches.map((batch: any, index: number) => (
-                                    <div key={batch.id || index} className="p-8 bg-zinc-50 dark:bg-zinc-900 rounded-[40px] border border-zinc-100 dark:border-zinc-800 space-y-4 relative group">
-                                        <button type="button" onClick={() => removeBatch(index)} className="absolute top-6 right-6 p-2 bg-rose-50 text-rose-500 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-500 hover:text-white"><X className="w-5 h-5" /></button>
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <Layers className="w-6 h-6 text-indigo-500" />
-                                            <span className="font-black text-sm uppercase tracking-widest text-zinc-400">Lô #{index + 1}</span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black uppercase text-zinc-400">Số lượng</label>
-                                                <input type="number" value={batch.quantity} onChange={(e) => updateBatch(index, 'quantity', e.target.value)} className="w-full bg-white dark:bg-zinc-800 border-none rounded-2xl py-3 px-4 font-black text-xl" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black uppercase text-zinc-400">Hạn sử dụng</label>
-                                                <input type="date" value={batch.expiryDate ? new Date(batch.expiryDate).toISOString().split('T')[0] : ''} onChange={(e) => updateBatch(index, 'expiryDate', e.target.value)} className="w-full bg-white dark:bg-zinc-800 border-none rounded-2xl py-3 px-4 text-xs font-bold" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                                {formData.batches.length === 0 && (
-                                    <div className="col-span-full py-20 bg-zinc-50 dark:bg-zinc-900 rounded-[48px] border-2 border-dashed border-zinc-200 dark:border-zinc-800 text-center text-zinc-500">
-                                        <Package className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                                        <p className="font-bold">Đồ vật này chưa được chia lô.</p>
-                                        <p className="text-xs">Nếu mỗi đợt mua có hạn dùng khác nhau, hãy thêm lô để quản lý.</p>
-                                    </div>
-                                )}
-                            </div>
-                        </motion.div>
-                    )}
-
-                    {activeTab === 'advanced' && (
-                        <motion.div
-                            key="advanced"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            className="space-y-8"
-                        >
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <div className="space-y-6">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2"><User className="w-4 h-4" /> Chủ sở hữu (Owner)</label>
-                                        <input name="owner" value={formData.owner} onChange={handleChange} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-4 px-6 outline-none font-bold" placeholder="Tên người quản lý..." />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2"><Calendar className="w-4 h-4" /> Ngày mua</label>
-                                            <input name="purchaseDate" type="date" value={formData.purchaseDate} onChange={handleChange} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-4 px-4 font-bold" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2"><DollarSign className="w-4 h-4" /> Giá (VNĐ)</label>
-                                            <input name="price" type="number" value={formData.price} onChange={handleChange} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-4 px-4 font-bold" placeholder="0" />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Cảnh báo tối thiểu (Min stock)</label>
-                                        <input name="minStock" type="number" value={formData.minStock} onChange={handleChange} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-2xl py-4 px-6 outline-none font-black text-xl" />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-6">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2"><Info className="w-4 h-4" /> Ghi chú</label>
-                                        <textarea name="note" value={formData.note} onChange={handleChange} rows={4} className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-3xl py-4 px-6 outline-none font-medium text-sm" placeholder="Mọi thông tin bổ sung khác..." />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-black uppercase tracking-widest text-zinc-400 flex items-center gap-2"><Layers className="w-4 h-4" /> Thông số kỹ thuật (JSON)</label>
-                                        <textarea
-                                            name="itemInfo"
-                                            value={formData.itemInfo}
-                                            onChange={handleChange}
-                                            rows={5}
-                                            className="w-full bg-zinc-50 dark:bg-zinc-900 border-none rounded-3xl py-4 px-6 outline-none font-mono text-[10px]"
-                                            placeholder='{"color": "white", "voltage": "220V"}'
-                                        />
-                                    </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">
+                                        <DollarSign className="w-4 h-4 inline mr-1" />
+                                        Giá (VNĐ)
+                                    </label>
+                                    <input
+                                        name="price"
+                                        type="number"
+                                        value={formData.price}
+                                        onChange={handleChange}
+                                        placeholder="0"
+                                        className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                    />
                                 </div>
                             </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">
+                                        <Calendar className="w-4 h-4 inline mr-1" />
+                                        Ngày mua
+                                    </label>
+                                    <input
+                                        name="purchaseDate"
+                                        type="date"
+                                        value={formData.purchaseDate}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-2">Tối thiểu</label>
+                                    <input
+                                        name="minStock"
+                                        type="number"
+                                        value={formData.minStock}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2">Ghi chú</label>
+                                <textarea
+                                    name="note"
+                                    value={formData.note}
+                                    onChange={handleChange}
+                                    rows={3}
+                                    placeholder="Thông tin thêm..."
+                                    className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent resize-none"
+                                />
+                            </div>
+                        </div>
+                    </details>
+                </div>
 
-                {/* Footer */}
-                <div className="flex flex-col md:flex-row gap-4 pt-12 border-t border-zinc-100 dark:border-zinc-800">
-                    <button type="submit" disabled={isSubmitting} className="flex-1 bg-zinc-950 dark:bg-white text-white dark:text-black py-7 rounded-[32px] font-black text-xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50">
-                        {isSubmitting ? 'Đang lưu...' : <><Save className="w-8 h-8" /> Xác nhận & Lưu kho</>}
+                {/* Actions */}
+                <div className="flex gap-3 mt-8 pt-8 border-t border-zinc-200 dark:border-zinc-800">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="flex-1 px-6 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors"
+                    >
+                        Hủy
                     </button>
-                    <button type="button" onClick={onCancel} className="md:w-64 bg-zinc-100 dark:bg-zinc-900 text-zinc-500 py-7 rounded-[32px] font-bold hover:bg-zinc-200 transition-all">Quay lại</button>
+                    <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="flex-1 px-6 py-3 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
+                    >
+                        <Save className="w-4 h-4" />
+                        {isSubmitting ? 'Đang lưu...' : 'Lưu'}
+                    </button>
                 </div>
             </form>
 

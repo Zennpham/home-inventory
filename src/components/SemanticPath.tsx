@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
 import { ChevronRight, MapPin, Package } from 'lucide-react';
 
 export interface PathSegment {
@@ -16,16 +15,35 @@ interface SemanticPathProps {
     className?: string;
     showIcon?: boolean;
     disableLinks?: boolean;
+    onSegmentClick?: (segment: PathSegment) => void;
 }
 
-export default function SemanticPath({ segments, className = '', showIcon = true, disableLinks = false }: SemanticPathProps) {
+export default function SemanticPath({ 
+    segments, 
+    className = '', 
+    showIcon = true, 
+    disableLinks = false,
+    onSegmentClick 
+}: SemanticPathProps) {
+    const handleClick = (e: React.MouseEvent, segment: PathSegment) => {
+        if (disableLinks) return;
+        
+        if (onSegmentClick) {
+            e.preventDefault();
+            onSegmentClick(segment);
+        } else {
+            // Let Next.js Link handle navigation
+            const href = segment.type === 'item'
+                ? `/items/${segment.id}`
+                : `/location/${segment.nfcId || segment.id}`;
+            window.location.href = href;
+        }
+    };
+
     return (
         <div className={`flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 ${className}`}>
             {segments.map((segment, index) => {
                 const isLast = index === segments.length - 1;
-                const linkHref = segment.type === 'item'
-                    ? `/items/${segment.id}`
-                    : `/location/${segment.nfcId || segment.id}`;
 
                 const content = (
                     <>
@@ -42,7 +60,7 @@ export default function SemanticPath({ segments, className = '', showIcon = true
                 const baseClasses = `flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider transition-all
                     ${isLast
                         ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md'
-                        : disableLinks ? 'text-zinc-500' : 'text-zinc-500 hover:text-indigo-500 hover:scale-105 active:scale-95'
+                        : disableLinks ? 'text-zinc-500' : 'text-zinc-500 hover:text-indigo-500 cursor-pointer'
                     }`;
 
                 return (
@@ -51,14 +69,17 @@ export default function SemanticPath({ segments, className = '', showIcon = true
                             <ChevronRight className="w-3 h-3 text-zinc-300 dark:text-zinc-700" />
                         )}
 
-                        {disableLinks ? (
+                        {disableLinks || isLast ? (
                             <span className={baseClasses}>
                                 {content}
                             </span>
                         ) : (
-                            <Link href={linkHref} className={baseClasses}>
+                            <span 
+                                onClick={(e) => handleClick(e, segment)}
+                                className={baseClasses}
+                            >
                                 {content}
-                            </Link>
+                            </span>
                         )}
                     </div>
                 );
@@ -67,22 +88,23 @@ export default function SemanticPath({ segments, className = '', showIcon = true
     );
 }
 
-/**
- * Utility to convert flat location string and ID into a simple link if full segments aren't available.
- * Use for quick updates before API overhaul is complete.
- */
-export function SimplePath({ name, path, id, nfcId, type = 'location' }: { name: string, path?: string, id: string, nfcId?: string, type?: 'location' | 'item' }) {
+export function SimplePath({ name, path, id, nfcId, type = 'location' }: { 
+    name: string, 
+    path?: string, 
+    id: string, 
+    nfcId?: string, 
+    type?: 'location' | 'item' 
+}) {
     if (!path) {
         return <SemanticPath segments={[{ name, id, nfcId, type }]} />;
     }
 
-    // Rough parsing if API segments aren't ready
     const parts = path.split(' > ');
     const segments: PathSegment[] = parts.map((part, i) => {
         const isLast = i === parts.length - 1;
         return {
             name: part,
-            id: isLast ? id : '', // We don't have parent IDs in the string, but clicking the last one works
+            id: isLast ? id : '',
             nfcId: isLast ? nfcId : '',
             type: (isLast && type === 'item') ? 'item' : 'location'
         };
