@@ -21,7 +21,7 @@ export default function LoginPage() {
             .then(res => res.json())
             .then(data => {
                 const guestMember = { name: 'Khách', role: 'guest' };
-                const adminMember = { name: 'Admin', role: 'admin' };
+                const adminMember = { name: 'Hngan', role: 'admin' };
                 setMembers([guestMember, adminMember, ...data]);
             })
             .catch(console.error);

@@ -12,14 +12,14 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Thiếu PIN' }, { status: 400 });
         }
 
-        // Check Admin PIN from env (if name is Admin or not provided)
-        if (!name || name === 'Admin') {
+        // Check Admin PIN from env (if name is Hngan or not provided)
+        if (!name || name === 'Hngan') {
             const adminPin = process.env.ADMIN_PIN || '0000';
             if (pin === adminPin) {
                 const adminToken = 'admin_' + crypto.randomBytes(16).toString('hex');
                 return NextResponse.json({
                     role: 'admin',
-                    name: 'Admin',
+                    name: 'Hngan',
                     token: adminToken,
                     permissions: {
                         canAddItems: true,

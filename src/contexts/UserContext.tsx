@@ -57,7 +57,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
         if (isLocalhost) {
             setRole('admin');
-            setName('Admin (Local)');
+            setName('Hngan (Local)');
             setPermissions({ canAddItems: true, canEditItems: true, canDeleteItems: true, canManageLocations: true });
             setIsLoading(false);
             return;

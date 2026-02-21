@@ -22,6 +22,19 @@ export async function GET(request: Request) {
             });
         }
 
+        if (token.startsWith('admin_')) {
+            return NextResponse.json({
+                role: 'admin',
+                name: 'Hngan',
+                permissions: {
+                    canAddItems: true,
+                    canEditItems: true,
+                    canDeleteItems: true,
+                    canManageLocations: true
+                }
+            });
+        }
+
         await dbConnect();
         const member = await FamilyMember.findOne({ token }).lean();
 

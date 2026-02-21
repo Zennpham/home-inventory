@@ -125,7 +125,7 @@ export default function FamilyPage() {
             <div className="min-h-screen flex items-center justify-center p-4">
                 <div className="text-center">
                     <Shield className="w-12 h-12 mx-auto mb-3 text-zinc-300" />
-                    <p className="text-sm text-zinc-500 mb-3">Chỉ Admin mới có quyền truy cập</p>
+                    <p className="text-sm text-zinc-500 mb-3">Chỉ Hngan mới có quyền truy cập</p>
                     <Link href="/" className="text-xs text-blue-600 hover:underline">Quay về</Link>
                 </div>
             </div>
@@ -156,9 +156,9 @@ export default function FamilyPage() {
             <div className="p-4 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50 rounded-2xl mb-5">
                 <div className="flex items-center gap-2 mb-1">
                     <Shield className="w-4 h-4 text-indigo-600" />
-                    <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">PIN Admin</p>
+                    <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">PIN của Hngan</p>
                 </div>
-                <p className="text-xs text-indigo-600/70 dark:text-indigo-400">Đặt biến môi trường <code className="font-mono bg-indigo-100 dark:bg-indigo-900 px-1 py-0.5 rounded">ADMIN_PIN</code> trên Vercel để thay đổi PIN Admin. Mặc định: <code className="font-mono bg-indigo-100 dark:bg-indigo-900 px-1 py-0.5 rounded">0000</code></p>
+                <p className="text-xs text-indigo-600/70 dark:text-indigo-400">Đặt biến môi trường <code className="font-mono bg-indigo-100 dark:bg-indigo-900 px-1 py-0.5 rounded">ADMIN_PIN</code> trên Vercel để thay đổi PIN của Hngan. Mặc định: <code className="font-mono bg-indigo-100 dark:bg-indigo-900 px-1 py-0.5 rounded">0000</code></p>
             </div>
 
             {/* Members list */}
