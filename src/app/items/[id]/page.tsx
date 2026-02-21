@@ -5,18 +5,25 @@ import { useParams, useRouter } from 'next/navigation';
 import {
     ArrowLeft, Edit3, Package, MapPin, User, Tag, Layers, Info,
     CalendarDays, Clock, DollarSign, Zap, Shield, ChevronRight,
-    Globe, Share2, Minus, Plus, TrendingUp
+    Globe, Share2, Minus, Plus, TrendingUp, X, Users
 } from 'lucide-react';
 import Link from 'next/link';
 import SemanticPath from '@/components/SemanticPath';
+import { useUser } from '@/contexts/UserContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 export default function ItemDetailPage() {
+    const { name } = useUser();
     const { id } = useParams();
     const router = useRouter();
     const [item, setItem] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [isPublishing, setIsPublishing] = useState(false);
+    const [historyNote, setHistoryNote] = useState('');
+    const [showNoteInput, setShowNoteInput] = useState(false);
+    const [prediction, setPrediction] = useState<any>(null);
+    const [isBorrowing, setIsBorrowing] = useState(false);
+    const [borrowData, setBorrowData] = useState({ borrower: '', note: '', dueDate: '' });
 
     const togglePublish = async () => {
         setIsPublishing(true);
@@ -42,6 +49,14 @@ export default function ItemDetailPage() {
             .then(setItem)
             .catch(console.error)
             .finally(() => setLoading(false));
+
+        // Fetch prediction
+        fetch(`/api/ai/predict/${id}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) setPrediction(data.prediction);
+            })
+            .catch(() => { });
     }, [id]);
 
     const [isAdjusting, setIsAdjusting] = useState(false);
@@ -54,13 +69,61 @@ export default function ItemDetailPage() {
             const res = await fetch(`/api/items/${id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ quantity: newQty, historyNote: delta > 0 ? 'Thêm' : 'Lấy ra' })
+                body: JSON.stringify({
+                    quantity: newQty,
+                    historyNote: historyNote || (delta > 0 ? 'Thêm' : 'Lấy ra'),
+                    performedBy: name
+                })
             });
             if (res.ok) {
                 const updated = await res.json();
                 setItem(updated);
+                setHistoryNote('');
+                setShowNoteInput(false);
             }
         } catch (e) { console.error(e) } finally { setIsAdjusting(false) }
+    };
+
+    const handleBorrow = async () => {
+        try {
+            const res = await fetch(`/api/items/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: 'borrowed',
+                    borrowedInfo: {
+                        borrower: borrowData.borrower,
+                        note: borrowData.note,
+                        dueDate: borrowData.dueDate,
+                        dateBorrowed: new Date()
+                    },
+                    historyNote: `Cho ${borrowData.borrower} mượn`,
+                    performedBy: name
+                })
+            });
+            if (res.ok) {
+                setItem(await res.json());
+                setIsBorrowing(false);
+            }
+        } catch (e) { console.error(e) }
+    };
+
+    const handleReturn = async () => {
+        try {
+            const res = await fetch(`/api/items/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: 'active',
+                    borrowedInfo: undefined,
+                    historyNote: `Đã nhận lại đồ`,
+                    performedBy: name
+                })
+            });
+            if (res.ok) {
+                setItem(await res.json());
+            }
+        } catch (e) { console.error(e) }
     };
 
     if (loading) return (
@@ -109,7 +172,12 @@ export default function ItemDetailPage() {
                         <div className="flex items-center gap-1.5 mt-0.5">
                             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${item.status === 'in stock' ? 'bg-emerald-100 text-emerald-600' : item.status === 'out of stock' ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
                                 }`}>{item.status}</span>
-                            <span className="text-[10px] text-zinc-500">{item.category}</span>
+                            <span className="text-[10px] text-zinc-500 font-medium">| {item.category}</span>
+                            {item.lastUpdatedBy && (
+                                <span className="text-[9px] font-bold text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded italic">
+                                    Bởi: {item.lastUpdatedBy}
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -148,6 +216,37 @@ export default function ItemDetailPage() {
                                 <Plus className="w-4 h-4" />
                             </button>
                         </div>
+
+                        {/* Quick Note Toggle */}
+                        <div className="mt-3 pt-3 border-t border-zinc-50 dark:border-zinc-800/50">
+                            {!showNoteInput ? (
+                                <button
+                                    onClick={() => setShowNoteInput(true)}
+                                    className="text-[10px] font-bold text-zinc-400 hover:text-zinc-600 flex items-center gap-1 transition-colors"
+                                >
+                                    <Edit3 className="w-3 h-3" /> Thêm ghi chú cho lần thay đổi này?
+                                </button>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <input
+                                        autoFocus
+                                        value={historyNote}
+                                        onChange={(e) => setHistoryNote(e.target.value)}
+                                        placeholder="Ví dụ: Lấy nấu lẩu, Mua mới..."
+                                        className="flex-1 bg-zinc-50 dark:bg-zinc-800 border-none rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-zinc-400 outline-none"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') adjustQuantity(0); // Just update note if qty didn't change, or maybe just leave it
+                                        }}
+                                    />
+                                    <button
+                                        onClick={() => setShowNoteInput(false)}
+                                        className="p-2 text-zinc-400 hover:text-zinc-600"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                     <div className="p-3 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-100 dark:border-zinc-800 text-center">
                         <p className="text-[10px] text-zinc-500">Tối thiểu</p>
@@ -159,6 +258,93 @@ export default function ItemDetailPage() {
                     </div>
                 </div>
             </div>
+
+            {/* AI Prediction Card */}
+            {prediction && (
+                <div className="mb-4 p-4 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-2xl shadow-lg relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <TrendingUp className="w-20 h-20 -rotate-12" />
+                    </div>
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                            <Zap className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Dự báo tiêu thụ (AI)</p>
+                        </div>
+                        <h3 className="text-sm font-black mb-1">Dự kiến hết hàng vào: <span className="text-amber-400">{new Date(prediction.estimatedEmptyDate).toLocaleDateString('vi-VN')}</span></h3>
+                        <p className="text-[11px] text-zinc-300 dark:text-zinc-600 mb-3 italic">"{prediction.advice}"</p>
+                        <div className="flex gap-4">
+                            <div>
+                                <p className="text-[9px] uppercase font-bold text-zinc-500">Tốc độ dùng</p>
+                                <p className="text-sm font-black">{prediction.dailyUsage.toFixed(2)} <span className="text-[10px] font-normal">{item.unit}/ngày</span></p>
+                            </div>
+                            <div>
+                                <p className="text-[9px] uppercase font-bold text-zinc-500">Thời gian còn lại</p>
+                                <p className="text-sm font-black">{prediction.daysRemaining} ngày</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Borrowing Section */}
+            <section className={`p-4 rounded-2xl border mb-4 transition-all ${item.status === 'borrowed' ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/20' : 'bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800'}`}>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1">Hệ thống cho mượn</p>
+                        {item.status === 'borrowed' ? (
+                            <h4 className="text-sm font-black text-amber-600 flex items-center gap-1.5">
+                                <Users className="w-4 h-4" /> Đang cho {item.borrowedInfo?.borrower} mượn
+                            </h4>
+                        ) : (
+                            <p className="text-xs text-zinc-500 italic">Vật phẩm đang ở trong kho.</p>
+                        )}
+                    </div>
+                    <button
+                        onClick={() => item.status === 'borrowed' ? handleReturn() : setIsBorrowing(!isBorrowing)}
+                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${item.status === 'borrowed' ? 'bg-emerald-600 text-white shadow-lg' : 'bg-zinc-100 dark:bg-zinc-800'}`}
+                    >
+                        {item.status === 'borrowed' ? 'Đã trả lại' : 'Đăng ký cho mượn'}
+                    </button>
+                </div>
+
+                {isBorrowing && (
+                    <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-zinc-500 px-1">Tên người mượn</label>
+                                <input
+                                    className="w-full bg-zinc-50 dark:bg-zinc-800 border-none rounded-xl px-3 py-2 text-xs"
+                                    placeholder="Ví dụ: Bác hàng xóm..."
+                                    value={borrowData.borrower}
+                                    onChange={e => setBorrowData({ ...borrowData, borrower: e.target.value })}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-zinc-500 px-1">Ngày hẹn trả</label>
+                                <input
+                                    type="date"
+                                    className="w-full bg-zinc-50 dark:bg-zinc-800 border-none rounded-xl px-3 py-2 text-xs"
+                                    value={borrowData.dueDate}
+                                    onChange={e => setBorrowData({ ...borrowData, dueDate: e.target.value })}
+                                />
+                            </div>
+                        </div>
+                        <input
+                            className="w-full bg-zinc-50 dark:bg-zinc-800 border-none rounded-xl px-3 py-2 text-xs"
+                            placeholder="Ghi chú thêm (ví dụ: Mượn sơn lại cửa...)"
+                            value={borrowData.note}
+                            onChange={e => setBorrowData({ ...borrowData, note: e.target.value })}
+                        />
+                        <button
+                            onClick={handleBorrow}
+                            disabled={!borrowData.borrower}
+                            className="w-full py-2.5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-xl text-xs font-black active:scale-95 transition-all disabled:opacity-50"
+                        >
+                            Xác nhận cho mượn
+                        </button>
+                    </div>
+                )}
+            </section>
 
             {/* Location */}
             <div
@@ -292,9 +478,8 @@ export default function ItemDetailPage() {
                             <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#a1a1aa' }} />
                             <YAxis tick={{ fontSize: 9, fill: '#a1a1aa' }} width={28} />
                             <Tooltip
-                                contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e4e4e7', padding: '4px 8px' }}
-                                labelStyle={{ fontWeight: 700 }}
-                                itemStyle={{ color: '#18181b' }}
+                                contentStyle={{ border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontSize: '10px' }}
+                                labelStyle={{ fontWeight: 'black' }}
                             />
                             <ReferenceLine y={item.minStock} stroke="#ef4444" strokeDasharray="4 4" label={{ value: 'Min', fill: '#ef4444', fontSize: 9, position: 'right' }} />
                             <Line
@@ -308,6 +493,32 @@ export default function ItemDetailPage() {
                             />
                         </LineChart>
                     </ResponsiveContainer>
+                </section>
+            )}
+
+            {/* usage History Log */}
+            {item.quantityHistory?.length > 0 && (
+                <section className="p-3 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 mb-10">
+                    <p className="text-[10px] font-black uppercase text-zinc-400 mb-3 tracking-widest px-1">Lịch sử sử dụng</p>
+                    <div className="space-y-1">
+                        {item.quantityHistory.slice().sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10).map((log: any, idx: number) => (
+                            <div key={idx} className="flex items-center justify-between p-2 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-50 dark:border-zinc-800/50 group">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-1.5 h-1.5 rounded-full ${log.note === 'Thêm' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                                    <div>
+                                        <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200">{log.performedBy || 'Unknown'}</p>
+                                        <p className="text-[9px] text-zinc-400">{new Date(log.date).toLocaleString('vi-VN')}</p>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <p className={`text-xs font-black ${log.note === 'Thêm' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {log.note === 'Thêm' ? '+' : ''}{log.qty - (item.quantityHistory[item.quantityHistory.indexOf(log) - 1]?.qty || 0)}
+                                    </p>
+                                    <p className="text-[9px] font-bold text-zinc-400 italic">Tồn: {log.qty}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </section>
             )}
 

@@ -29,6 +29,7 @@ export async function GET() {
 
             return {
                 ...item,
+                displayImage: (item.imageUrls && item.imageUrls.length > 0) ? item.imageUrls[0] : item.imageUrl,
                 pathSegments: [...locSegments, { name: item.name, id: item._id, type: 'item' }]
             };
         });
@@ -43,6 +44,17 @@ export async function POST(request: Request) {
     try {
         await dbConnect();
         const body = await request.json();
+
+        // Initialize history
+        const user = body.performedBy || 'Admin';
+        body.quantityHistory = [{
+            qty: body.quantity || 0,
+            date: new Date(),
+            note: 'Tạo mới',
+            performedBy: user
+        }];
+        body.lastUpdatedBy = user;
+
         const item = await Item.create(body);
 
         // Log activity

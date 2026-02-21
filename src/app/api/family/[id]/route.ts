@@ -10,7 +10,16 @@ export async function PATCH(
         const { id } = await params;
         await dbConnect();
         const body = await request.json();
-        const updated = await FamilyMember.findByIdAndUpdate(id, body, { new: true }).lean();
+
+        console.log(`API PATCH - Updating member ${id}:`, body);
+
+        const updated = await FamilyMember.findByIdAndUpdate(
+            id,
+            { $set: body },
+            { new: true, runValidators: true }
+        ).lean();
+
+        console.log('API PATCH - Updated result PIN:', updated?.pin);
         return NextResponse.json(updated);
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 400 });

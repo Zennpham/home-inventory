@@ -39,20 +39,23 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
         unit: initialData?.unit || 'pcs',
         location: initialData?.location?._id || initialData?.location || '',
         category: initialData?.category || 'general',
+        subcategory: initialData?.subcategory || '',
         owner: initialData?.owner || '',
         purchaseDate: initialData?.purchaseDate ? new Date(initialData.purchaseDate).toISOString().split('T')[0] : '',
-        price: initialData?.price || 0,
-        status: initialData?.status || 'in stock',
+        purchasePrice: initialData?.purchasePrice || initialData?.price || 0,
+        currentValue: initialData?.currentValue || 0,
+        condition: initialData?.condition || 'good',
+        status: initialData?.status || 'active',
         note: initialData?.note || '',
         minStock: initialData?.minStock || 1,
         barcode: initialData?.barcode || '',
-        imageUrl: initialData?.imageUrl || '',
+        imageUrls: initialData?.imageUrls || (initialData?.imageUrl ? [initialData.imageUrl] : []),
         expiryDate: initialData?.expiryDate ? new Date(initialData.expiryDate).toISOString().split('T')[0] : '',
-        batches: initialData?.batches || [],
+        warrantyDate: initialData?.warrantyDate ? new Date(initialData.warrantyDate).toISOString().split('T')[0] : '',
+        serialNumber: initialData?.serialNumber || '',
         brand: initialData?.brand || '',
         modelNumber: initialData?.modelNumber || '',
-        warrantyDate: initialData?.warrantyDate ? new Date(initialData.warrantyDate).toISOString().split('T')[0] : '',
-        maintenanceFrequency: initialData?.maintenanceFrequency || 0
+        tags: initialData?.tags || []
     });
 
     const [showScanner, setShowScanner] = useState(false);
@@ -67,6 +70,7 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
     );
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [dynamicAiFields, setDynamicAiFields] = useState<CustomFieldDef[]>([]);
 
 
     // Sync locations from props
@@ -124,53 +128,85 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
             reader.onload = (event) => {
                 const img = new Image();
                 img.onload = async () => {
-                    // Compress image using Canvas
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-
                     const MAX_WIDTH = 800;
                     const scaleSize = MAX_WIDTH / img.width;
                     const width = (img.width > MAX_WIDTH) ? MAX_WIDTH : img.width;
                     const height = (img.width > MAX_WIDTH) ? img.height * scaleSize : img.height;
-
                     canvas.width = width;
                     canvas.height = height;
                     ctx?.drawImage(img, 0, 0, width, height);
-
                     const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
-                    setFormData(prev => ({ ...prev, imageUrl: compressedBase64 }));
 
-                    // Trigger Magic AI Analysis
-                    setIsAnalyzing(true);
-                    setAiStatus('Magic AI đang phân tích ảnh...');
-                    try {
-                        const res = await fetch('/api/ai/analyze', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ image: compressedBase64 })
-                        });
-                        const data = await res.json();
-                        if (data.success && data.analysis) {
-                            const { name, category, unit, description } = data.analysis;
-                            setFormData(prev => ({
-                                ...prev,
-                                name: prev.name || name,
-                                category: prev.category === 'general' ? category : prev.category,
-                                unit: prev.unit === 'pcs' ? unit : prev.unit,
-                                note: prev.note ? `${prev.note}\n\n${description}` : description
-                            }));
-                            setAiStatus('✨ AI đã nhận diện xong!');
-                        }
-                    } catch (err) {
-                        console.error("AI Analysis failed", err);
-                        setAiStatus('AI bận rồi, hãy điền tay nhé.');
-                    } finally {
-                        setTimeout(() => { setIsAnalyzing(false); setAiStatus(''); }, 3000);
-                    }
+                    setFormData(prev => ({
+                        ...prev,
+                        imageUrls: [...prev.imageUrls, compressedBase64]
+                    }));
                 };
                 img.src = event.target?.result as string;
             };
             reader.readAsDataURL(file);
+        }
+    };
+
+    const runMagicAi = async () => {
+        if (formData.imageUrls.length === 0) return;
+
+        setIsAnalyzing(true);
+        setAiStatus('Magic AI đang phân tích dữ liệu đa phương thức...');
+        try {
+            const res = await fetch('/api/ai/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ images: formData.imageUrls })
+            });
+            const data = await res.json();
+            console.log('Magic AI Global Result:', data);
+
+            if (data.success && data.analysis) {
+                const { core, category_specific } = data.analysis;
+
+                // Update Core Fields
+                setFormData(prev => ({
+                    ...prev,
+                    name: prev.name || core.name,
+                    category: core.category,
+                    subcategory: core.subcategory,
+                    unit: prev.unit === 'pcs' ? core.unit : prev.unit,
+                    condition: core.condition,
+                    status: core.status,
+                    purchasePrice: prev.purchasePrice || core.purchase_price,
+                    currentValue: prev.currentValue || core.current_value,
+                    expiryDate: core.expiry_date || prev.expiryDate,
+                    warrantyDate: core.warranty_expiry || prev.warrantyDate,
+                    serialNumber: prev.serialNumber || core.serial_number,
+                    tags: Array.from(new Set([...prev.tags, ...(core.tags || [])]))
+                }));
+
+                // Process extra fields from category specific
+                if (category_specific && Object.keys(category_specific).length > 0) {
+                    const newFields: CustomFieldDef[] = Object.keys(category_specific).map(key => ({
+                        fieldName: `ai_${key}`,
+                        label: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                        fieldType: typeof category_specific[key] === 'number' ? 'number' : 'text',
+                        required: false
+                    }));
+                    setDynamicAiFields(newFields);
+
+                    const newValues: Record<string, any> = {};
+                    Object.keys(category_specific).forEach(key => {
+                        newValues[`ai_${key}`] = category_specific[key];
+                    });
+                    setCustomFieldValues(prev => ({ ...prev, ...newValues }));
+                }
+                setAiStatus('✨ AI đã khớp mọi thông tin!');
+            }
+        } catch (err) {
+            console.error("AI Analysis failed", err);
+            setAiStatus('AI bận rồi, hãy điền tay nhé.');
+        } finally {
+            setTimeout(() => { setIsAnalyzing(false); setAiStatus(''); }, 3000);
         }
     };
 
@@ -198,15 +234,16 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
             if (res.ok) {
                 const result = await res.json();
                 if (result.found && result.data) {
-                    const { name, category, unit, brand, imageUrl, note } = result.data;
+                    const { name, category, unit, brand, imageUrl, note, price } = result.data;
                     setFormData(p => ({
                         ...p,
                         name: p.name || name || '',
                         category: (p.category === 'general' && category) ? category : p.category,
                         unit: (p.unit === 'pcs' && unit) ? unit : p.unit,
                         brand: p.brand || brand || '',
-                        imageUrl: p.imageUrl || imageUrl || '',
-                        note: p.note || note || ''
+                        imageUrls: p.imageUrls.length === 0 && imageUrl ? [imageUrl] : p.imageUrls,
+                        note: p.note || note || '',
+                        purchasePrice: p.purchasePrice || price || 0
                     }));
                     setIsScanningStatus(`Sắp xếp tự động thành công (từ ${result.source === 'local' ? 'kho dữ liệu' : 'Internet'}).`);
                 } else {
@@ -247,172 +284,163 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
                 {/* Main Info */}
                 <div className="space-y-6">
                     {/* Image URL or Camera */}
+                    {/* Multiple Image Gallery */}
                     <div>
-                        <label className="block text-sm font-medium mb-2">Hình ảnh</label>
-                        <div className="flex gap-4 items-start">
-                            <div className="flex-1 space-y-3">
-                                {/* Option 1: URL Input */}
-                                <input
-                                    name="imageUrl"
-                                    value={formData.imageUrl}
-                                    onChange={handleChange}
-                                    placeholder="Dán URL ảnh hoặc chụp..."
-                                    className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent text-sm"
-                                />
-
-                                {/* Option 2: Camera/Upload Button */}
-                                <div className="flex gap-2">
-                                    <label className="cursor-pointer flex items-center gap-2 px-4 py-2 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg text-sm font-medium transition-colors">
-                                        <Camera className="w-4 h-4" />
-                                        Chụp / Chọn ảnh
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            capture="environment" // Prefer rear camera on mobile
-                                            className="hidden"
-                                            onChange={handleImageCapture}
-                                        />
-                                    </label>
-                                    {formData.imageUrl && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setFormData(p => ({ ...p, imageUrl: '' }))}
-                                            className="px-4 py-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950 rounded-lg text-sm font-medium transition-colors"
-                                        >
-                                            Xóa ảnh
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Preview with AI Loading */}
-                            <div className="relative w-24 h-24 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-50 dark:bg-zinc-900 flex-shrink-0 flex items-center justify-center">
-                                {formData.imageUrl ? (
-                                    <>
-                                        <img src={formData.imageUrl} alt="Preview" className={`w-full h-full object-cover transition-opacity ${isAnalyzing ? 'opacity-40' : 'opacity-100'}`} onError={(e) => (e.currentTarget.style.display = 'none')} />
-                                        {isAnalyzing && (
-                                            <div className="absolute inset-0 flex items-center justify-center">
-                                                <div className="w-8 h-8 border-2 border-zinc-900 dark:border-white border-t-transparent rounded-full animate-spin" />
-                                            </div>
-                                        )}
-                                    </>
-                                ) : (
-                                    <Camera className="w-8 h-8 text-zinc-300" />
-                                )}
-                            </div>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="text-sm font-bold uppercase tracking-wider text-zinc-500">Hình ảnh ({formData.imageUrls.length})</label>
+                            {formData.imageUrls.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={runMagicAi}
+                                    disabled={isAnalyzing}
+                                    className="text-xs font-black text-indigo-600 dark:text-indigo-400 flex items-center gap-1 hover:scale-105 transition-transform"
+                                >
+                                    <span className="text-sm">✨</span> MAGIC ANALYZE
+                                </button>
+                            )}
                         </div>
+                        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                            <label className="w-20 h-20 flex-shrink-0 flex flex-col items-center justify-center bg-zinc-50 dark:bg-zinc-900 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl cursor-pointer hover:border-zinc-400 transition-colors">
+                                <Camera className="w-5 h-5 text-zinc-400" />
+                                <span className="text-[10px] mt-1 font-bold text-zinc-500">THÊM ẢNH</span>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    className="hidden"
+                                    onChange={handleImageCapture}
+                                />
+                            </label>
+                            {formData.imageUrls.map((url: string, idx: number) => (
+                                <div key={idx} className="relative w-20 h-20 flex-shrink-0 rounded-xl overflow-hidden border border-zinc-100 dark:border-zinc-800 group">
+                                    <img src={url} className="w-full h-full object-cover" alt={`Preview ${idx}`} />
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(p => ({ ...p, imageUrls: p.imageUrls.filter((_: any, i: number) => i !== idx) }))}
+                                        className="absolute top-1 right-1 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
                         <AnimatePresence>
                             {aiStatus && (
                                 <motion.div
-                                    initial={{ opacity: 0, y: -10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0 }}
-                                    className="mt-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900 rounded-lg flex items-center gap-2"
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.95 }}
+                                    className="mt-3 px-4 py-3 bg-indigo-600 text-white rounded-xl shadow-xl shadow-indigo-500/20 flex items-center justify-between"
                                 >
-                                    <span className="animate-pulse">✨</span>
-                                    <p className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{aiStatus}</p>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        <span className="text-xs font-bold">{aiStatus}</span>
+                                    </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
                     </div>
 
                     {/* Name with Autocomplete */}
-                    <div className="relative">
-                        <label className="block text-sm font-medium mb-2">Tên món đồ *</label>
-                        <input
-                            required
-                            name="name"
-                            value={formData.name}
-                            onChange={(e) => {
-                                handleChange(e);
-                                // Fetch suggestions
-                                const query = e.target.value;
-                                if (query.length >= 2) {
-                                    fetch(`/api/items/suggest?q=${encodeURIComponent(query)}`)
-                                        .then(res => res.json())
-                                        .then(data => setSuggestions(data))
-                                        .catch(() => setSuggestions([]));
-                                } else {
-                                    setSuggestions([]);
-                                }
-                            }}
-                            onFocus={() => setShowSuggestions(true)}
-                            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                            placeholder="VD: Sữa tươi TH True Milk"
-                            className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
-                            autoComplete="off"
-                        />
+                    {/* Name & Subcategory */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="relative">
+                            <label className="block text-[10px] font-black uppercase text-zinc-400 px-1 mb-1">Tên món đồ *</label>
+                            <input
+                                required
+                                name="name"
+                                value={formData.name}
+                                onChange={(e) => {
+                                    handleChange(e);
+                                    const query = e.target.value;
+                                    if (query.length >= 2) {
+                                        fetch(`/api/items/suggest?q=${encodeURIComponent(query)}`)
+                                            .then(res => res.json())
+                                            .then((data: any[]) => setSuggestions(data))
+                                            .catch(() => setSuggestions([]));
+                                    } else {
+                                        setSuggestions([]);
+                                    }
+                                }}
+                                onFocus={() => setShowSuggestions(true)}
+                                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                                placeholder="VD: Sữa tươi TH True Milk"
+                                className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white"
+                                autoComplete="off"
+                            />
 
-                        {/* Suggestions Dropdown */}
-                        {showSuggestions && suggestions.length > 0 && (
-                            <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-100 dark:border-zinc-800">
-                                    ⚠️ Đã có món đồ tương tự:
+                            {/* Suggestions Dropdown */}
+                            {showSuggestions && suggestions.length > 0 && (
+                                <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                    <div className="px-3 py-2 text-xs text-zinc-500 border-b border-zinc-100 dark:border-zinc-800">
+                                        ⚠️ Đã có món đồ tương tự:
+                                    </div>
+                                    {suggestions.map((item: { _id: string; name: string; quantity: number; unit: string }) => (
+                                        <button
+                                            key={item._id}
+                                            type="button"
+                                            onClick={() => window.location.href = `/items/${item._id}`}
+                                            className="w-full px-3 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 flex justify-between items-center"
+                                        >
+                                            <span className="font-medium">{item.name}</span>
+                                            <span className="text-xs text-zinc-500">{item.quantity} {item.unit}</span>
+                                        </button>
+                                    ))}
                                 </div>
-                                {suggestions.map((item: any) => (
-                                    <button
-                                        key={item._id}
-                                        type="button"
-                                        onClick={() => {
-                                            // Navigate to existing item
-                                            window.location.href = `/items/${item._id}`;
-                                        }}
-                                        className="w-full px-3 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 flex justify-between items-center"
-                                    >
-                                        <span className="font-medium">{item.name}</span>
-                                        <span className="text-xs text-zinc-500">
-                                            {item.quantity} {item.unit} @ {item.locationName}
-                                        </span>
-                                    </button>
-                                ))}
-                                <div className="px-3 py-2 text-xs text-zinc-400 border-t border-zinc-100 dark:border-zinc-800">
-                                    Nhấn để xem chi tiết, hoặc tiếp tục nhập để tạo mới
-                                </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-black uppercase text-zinc-400 px-1 mb-1">Phân loại phụ</label>
+                            <input
+                                name="subcategory"
+                                value={formData.subcategory}
+                                onChange={handleChange}
+                                placeholder="VD: Ít đường, 1L..."
+                                className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white"
+                            />
+                        </div>
                     </div>
 
 
                     {/* Quantity & Unit */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium mb-2">Số lượng</label>
-                            <div className="flex items-stretch border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+                            <label className="block text-[10px] font-black uppercase text-zinc-400 px-1 mb-1">Số lượng</label>
+                            <div className="flex items-stretch bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl overflow-hidden">
                                 <button
                                     type="button"
                                     onClick={() => setFormData(p => ({ ...p, quantity: Math.max(0, p.quantity - 1) }))}
-                                    className="min-w-[48px] min-h-[48px] flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors active:bg-zinc-200 dark:active:bg-zinc-800"
+                                    className="px-3 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                                 >
-                                    <Minus className="w-5 h-5" />
+                                    <Minus className="w-4 h-4" />
                                 </button>
                                 <input
                                     name="quantity"
                                     type="number"
-                                    inputMode="decimal"
-                                    step="0.01"
                                     value={formData.quantity}
                                     onChange={handleChange}
-                                    className="flex-1 min-w-0 text-center bg-transparent border-none outline-none font-bold text-lg py-3"
-                                    min="0"
+                                    className="flex-1 min-w-0 text-center bg-transparent border-none outline-none font-bold py-2"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setFormData(p => ({ ...p, quantity: p.quantity + 1 }))}
-                                    className="min-w-[48px] min-h-[48px] flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors active:bg-zinc-200 dark:active:bg-zinc-800"
+                                    className="px-3 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                                 >
-                                    <Plus className="w-5 h-5" />
+                                    <Plus className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium mb-2">Đơn vị</label>
+                            <label className="block text-[10px] font-black uppercase text-zinc-400 px-1 mb-1">Đơn vị</label>
                             <input
                                 name="unit"
                                 value={formData.unit}
                                 onChange={handleChange}
-                                placeholder="pcs, kg, lít..."
-                                className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                placeholder="cái, kg, lít..."
+                                className="w-full px-4 py-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white"
                             />
                         </div>
                     </div>
@@ -450,63 +478,80 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
                         )}
                     </div>
 
-                    {/* Category & Status */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Danh mục</label>
-                            <div className="relative">
+                    {/* Professional Category & Core Fields */}
+                    <div className="space-y-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-black uppercase text-zinc-400 px-1 mb-1">Danh mục chính</label>
                                 <select
                                     name="category"
                                     value={formData.category}
                                     onChange={handleChange}
-                                    className="w-full px-4 py-3 appearance-none border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                    className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white"
                                 >
-                                    <option value="general">Đồ dùng chung</option>
-                                    <option value="food">Thực phẩm</option>
-                                    <option value="electronics">Điện tử</option>
-                                    <option value="medical">Thuốc & Y tế</option>
-                                    <option value="clothing">Quần áo</option>
-                                    <option value="tools">Dụng cụ</option>
-                                    {categories.length > 0 && (
-                                        <optgroup label="── Danh mục nâng cao ──">
-                                            {categories.map(cat => (
-                                                <option key={cat._id} value={cat._id}>
-                                                    {cat.icon} {cat.name}
-                                                </option>
-                                            ))}
-                                        </optgroup>
-                                    )}
+                                    <option value="general">Khác / Chung</option>
+                                    <option value="food">🍎 Thực phẩm</option>
+                                    <option value="electronics">📱 Điện tử</option>
+                                    <option value="medical">💊 Y tế / Thuốc</option>
+                                    <option value="clothing">👕 Quần áo</option>
+                                    <option value="tools">🔧 Dụng cụ</option>
+                                    <option value="vehicle">🏍️ Xe cộ</option>
+                                    <option value="collectible">🎨 Đồ sưu tầm</option>
+                                    <option value="furniture">🛋️ Nội thất</option>
+                                    <option value="books">📚 Sách</option>
+                                    <option value="pet">🐾 Thú cưng</option>
+                                    <option value="document">🧾 Giấy tờ</option>
+                                    <option value="cosmetic">🧴 Mỹ phẩm</option>
                                 </select>
-                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400"><path d="M1 1L5 5L9 1" /></svg>
-                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase text-zinc-400 px-1 mb-1">Tình trạng</label>
+                                <select
+                                    name="condition"
+                                    value={formData.condition}
+                                    onChange={handleChange}
+                                    className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-white"
+                                >
+                                    <option value="new">🆕 Mới 100%</option>
+                                    <option value="good">✨ Còn tốt</option>
+                                    <option value="used">🕒 Đã dùng</option>
+                                    <option value="damaged">⚠️ Hư hỏng</option>
+                                </select>
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-2">Trạng thái</label>
-                            <div className="relative">
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-black uppercase text-zinc-400 px-1 mb-1">Giá mua (VNĐ)</label>
+                                <input
+                                    name="purchasePrice"
+                                    type="number"
+                                    value={formData.purchasePrice}
+                                    onChange={handleChange}
+                                    className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black uppercase text-zinc-400 px-1 mb-1">Trạng thái</label>
                                 <select
                                     name="status"
                                     value={formData.status}
                                     onChange={handleChange}
-                                    className="w-full px-4 py-3 appearance-none border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"
+                                    className="w-full px-4 py-3 bg-zinc-50 dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl text-sm"
                                 >
-                                    <option value="in stock">Còn hàng</option>
-                                    <option value="out of stock">Hết hàng</option>
-                                    <option value="reserved">Đã đặt trước</option>
-                                    <option value="critical">Sắp hết</option>
+                                    <option value="active">🟢 Đang sử dụng</option>
+                                    <option value="consumed">🔴 Đã hết / Dùng xong</option>
+                                    <option value="lost">⚪ Thất lạc</option>
+                                    <option value="sold">💰 Đã bán</option>
                                 </select>
-                                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                                    <svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400"><path d="M1 1L5 5L9 1" /></svg>
-                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Dynamic Custom Fields */}
-                    {currentFields.length > 0 && (
+                    {/* Dynamic Custom Fields (Category + AI) */}
+                    {(currentFields.length > 0 || dynamicAiFields.length > 0) && (
                         <DynamicFieldsInput
-                            fields={currentFields}
+                            fields={[...currentFields, ...dynamicAiFields]}
                             values={customFieldValues}
                             onChange={(fieldName, value) =>
                                 setCustomFieldValues(prev => ({ ...prev, [fieldName]: value }))
@@ -620,12 +665,12 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
                                 <div>
                                     <label className="block text-sm font-medium mb-2">
                                         <DollarSign className="w-4 h-4 inline mr-1" />
-                                        Giá (VNĐ)
+                                        Giá mua (VNĐ)
                                     </label>
                                     <input
-                                        name="price"
+                                        name="purchasePrice"
                                         type="number"
-                                        value={formData.price}
+                                        value={formData.purchasePrice}
                                         onChange={handleChange}
                                         placeholder="0"
                                         className="w-full px-4 py-3 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-white bg-transparent"

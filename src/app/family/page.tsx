@@ -50,22 +50,46 @@ export default function FamilyPage() {
         setLoading(true);
         try {
             const res = await fetch('/api/family');
-            setMembers(await res.json());
-        } catch (err) { console.error(err); }
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                setMembers(data);
+            } else {
+                console.error('API did not return an array:', data);
+                setMembers([]);
+            }
+        } catch (err) {
+            console.error('Fetch error:', err);
+            setMembers([]);
+        }
         finally { setLoading(false); }
     }
 
     async function handleAddMember(e: React.FormEvent) {
         e.preventDefault();
+        console.log('Frontend - Adding member:', newMember);
+
+        if (!newMember.pin || newMember.pin.length !== 4) {
+            alert('PIN phải có đúng 4 chữ số');
+            return;
+        }
+
         const res = await fetch('/api/family', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newMember)
+            body: JSON.stringify({
+                name: newMember.name,
+                pin: String(newMember.pin),
+                permissions: newMember.permissions
+            })
         });
+
         if (res.ok) {
             await fetchMembers();
             setNewMember({ name: '', pin: generatePin(), permissions: { canAddItems: true, canEditItems: false, canDeleteItems: false, canManageLocations: false } });
             setShowForm(false);
+        } else {
+            const err = await res.json();
+            alert('Lỗi: ' + (err.error || 'Không thể tạo thành viên'));
         }
     }
 
@@ -73,14 +97,19 @@ export default function FamilyPage() {
         if (!newPin || newPin.length !== 4 || !/^\d+$/.test(newPin)) return;
         setSavingId(memberId);
         try {
-            await fetch(`/api/family/${memberId}`, {
+            const res = await fetch(`/api/family/${memberId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ pin: newPin })
             });
-            setMembers(ms => ms.map(m => m._id === memberId ? { ...m, pin: newPin } : m));
-            setEditingPinId(null);
-            setNewPin('');
+            const updated = await res.json();
+            if (res.ok && updated) {
+                setMembers(ms => ms.map(m => m._id === memberId ? updated : m));
+                setEditingPinId(null);
+                setNewPin('');
+            } else {
+                alert('Lỗi: ' + (updated.error || 'Không thể đổi PIN'));
+            }
         } catch (err) { console.error(err); }
         finally { setSavingId(null); }
     }
@@ -112,7 +141,7 @@ export default function FamilyPage() {
                     </Link>
                     <div>
                         <h1 className="text-lg font-black">Quản lý thành viên</h1>
-                        <p className="text-xs text-zinc-500">{members.length} thành viên — quản lý PIN đăng nhập</p>
+                        <p className="text-xs text-zinc-500">{Array.isArray(members) ? members.length : 0} thành viên — quản lý PIN đăng nhập</p>
                     </div>
                 </div>
                 <button
@@ -142,7 +171,7 @@ export default function FamilyPage() {
                         <p className="text-sm font-medium text-zinc-500">Chưa có thành viên</p>
                         <p className="text-xs text-zinc-400 mt-1">Tạo PIN cho từng người trong gia đình</p>
                     </div>
-                ) : members.map(member => (
+                ) : (Array.isArray(members) ? members : []).map(member => (
                     <motion.div
                         key={member._id}
                         layout
@@ -152,9 +181,10 @@ export default function FamilyPage() {
                             <div>
                                 <p className="text-sm font-black">{member.name}</p>
                                 <div className="flex flex-wrap gap-1 mt-1.5">
-                                    {PERMS.filter(p => member.permissions[p.key as keyof typeof member.permissions]).map(p => (
+                                    {member.permissions && PERMS.filter(p => member.permissions[p.key as keyof typeof member.permissions]).map(p => (
                                         <span key={p.key} className={`px-1.5 py-0.5 text-[9px] font-bold rounded bg-${p.color}-100 text-${p.color}-700 dark:bg-${p.color}-950/40 dark:text-${p.color}-400`}>{p.label}</span>
                                     ))}
+                                    {!member.permissions && <span className="text-[9px] text-zinc-400">Không có quyền hạn</span>}
                                 </div>
                             </div>
                             <button onClick={() => handleDelete(member._id)} className="p-1.5 text-zinc-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors">
@@ -191,7 +221,7 @@ export default function FamilyPage() {
                                 <div className="mt-2">
                                     {showPins[member._id] ? (
                                         <div className="flex gap-2">
-                                            {member.pin.split('').map((d, i) => (
+                                            {member.pin && member.pin.split('').map((d, i) => (
                                                 <div key={i} className="w-10 h-10 flex items-center justify-center bg-white dark:bg-zinc-700 border-2 border-zinc-200 dark:border-zinc-600 rounded-xl text-lg font-black shadow-sm">
                                                     {d}
                                                 </div>

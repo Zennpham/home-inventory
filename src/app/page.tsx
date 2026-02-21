@@ -17,7 +17,9 @@ import {
   Clock,
   CreditCard,
   FolderOpen,
-  FileCode
+  FileCode,
+  Utensils,
+  DollarSign
 } from 'lucide-react';
 
 import UserBadge from '@/components/UserBadge';
@@ -31,6 +33,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [recipes, setRecipes] = useState<any[]>([]);
+  const [loadingRecipes, setLoadingRecipes] = useState(true);
 
   const { role } = useUser();
   const isAdmin = role === 'admin';
@@ -63,12 +67,29 @@ export default function Dashboard() {
       }
     }
     fetchData();
+
+    // Fetch recipes
+    fetch('/api/ai/recipes')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setRecipes(data.recipes);
+      })
+      .catch(() => { })
+      .finally(() => setLoadingRecipes(false));
   }, []);
+
+  const removeAccents = (str: string) => {
+    return str.normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D');
+  };
 
   useEffect(() => {
     if (searchQuery.length > 1) {
+      const normalizedQuery = removeAccents(searchQuery.toLowerCase());
       const filtered = items.filter(item =>
-        item.name.toLowerCase().includes(searchQuery.toLowerCase())
+        removeAccents(item.name.toLowerCase()).includes(normalizedQuery)
       ).slice(0, 8);
       setSearchResults(filtered);
     } else {
@@ -130,7 +151,7 @@ export default function Dashboard() {
             {searchResults.length > 0 ? searchResults.map(item => (
               <Link key={item._id} href={`/items/${item._id}`} className="flex items-center gap-2 p-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">
                 <div className="w-8 h-8 bg-zinc-100 dark:bg-zinc-800 rounded-lg overflow-hidden flex-shrink-0">
-                  {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="w-full h-full p-1.5 text-zinc-400" />}
+                  {(item.displayImage || item.imageUrl) ? <img src={item.displayImage || item.imageUrl} className="w-full h-full object-cover" /> : <Package className="w-full h-full p-1.5 text-zinc-400" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold truncate">{item.name}</p>
@@ -231,6 +252,10 @@ export default function Dashboard() {
               <CreditCard className="w-4 h-4 text-purple-600" />
               <span className="text-xs font-bold">Services</span>
             </Link>
+            <Link href="/admin/assets" className="p-2.5 bg-zinc-900 dark:bg-white rounded-xl border border-zinc-900 dark:border-white flex items-center gap-2 hover:scale-[1.02] transition-all shadow-lg">
+              <DollarSign className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
+              <span className="text-[10px] font-black uppercase text-white dark:text-black">Wealth Stats</span>
+            </Link>
           </div>
         </section>
       )}
@@ -267,6 +292,35 @@ export default function Dashboard() {
         </section>
       )}
 
+      {/* AI Recipe Suggestions */}
+      {!loadingRecipes && recipes.length > 0 && (
+        <section className="mb-6">
+          <div className="flex items-center gap-2 mb-3 px-1">
+            <Utensils className="w-4 h-4 text-emerald-600" />
+            <p className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">KITCHEN AI: GỢI Ý MÓN ĂN</p>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide -mx-4 px-4">
+            {recipes.map((recipe, idx) => (
+              <div key={idx} className="min-w-[280px] p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 shadow-sm">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-black text-sm text-emerald-900 dark:text-emerald-400">{recipe.title}</h3>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 bg-emerald-200 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 rounded uppercase">{recipe.difficulty}</span>
+                </div>
+                <p className="text-[10px] text-emerald-700 dark:text-emerald-500/70 mb-3 line-clamp-2 leading-relaxed">"{recipe.description}"</p>
+                <div className="flex items-center justify-between mt-auto">
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600">
+                    <Clock className="w-3 h-3" /> {recipe.time}
+                  </div>
+                  <div className="text-[9px] text-emerald-500 italic">
+                    Dùng: {recipe.ingredientsUsed.slice(0, 2).join(', ')}...
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Recent Items */}
       <section className="mb-4">
         <div className="flex items-center justify-between mb-2 px-1">
@@ -277,7 +331,7 @@ export default function Dashboard() {
           {items.slice(0, 4).map(item => (
             <Link key={item._id} href={`/items/${item._id}`} className="flex items-center gap-2.5 p-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">
               <div className="w-10 h-10 bg-zinc-100 dark:bg-zinc-800 rounded-lg overflow-hidden flex-shrink-0 border border-zinc-200/50 dark:border-zinc-700/50">
-                {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <Package className="w-full h-full p-2 text-zinc-400" />}
+                {(item.displayImage || item.imageUrl) ? <img src={item.displayImage || item.imageUrl} className="w-full h-full object-cover" /> : <Package className="w-full h-full p-2 text-zinc-400" />}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold truncate leading-none mb-1 text-zinc-900 dark:text-white">{item.name}</p>

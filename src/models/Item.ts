@@ -5,28 +5,39 @@ export interface IItem extends Document {
     quantity: number;
     unit: string;
     location: mongoose.Types.ObjectId;
-    categoryId?: mongoose.Types.ObjectId; // Reference to Category model
-    category: 'food' | 'electronics' | 'general' | 'medical' | 'clothing' | 'tools'; // Legacy
-    customFields?: Map<string, any>; // Dynamic fields from Category
+    categoryId?: mongoose.Types.ObjectId;
+    category: 'food' | 'electronics' | 'general' | 'medical' | 'clothing' | 'tools' | 'vehicle' | 'collectible' | 'furniture' | 'books' | 'pet' | 'document' | 'cosmetic';
+    subcategory?: string;
+    customFields?: Map<string, any>;
+
+    // Core Fields
     owner?: string;
     purchaseDate?: Date;
-    price?: number;
-    expiryDate?: Date;
-    maintenanceDate?: Date;
-    lastChecked?: Date;
-    minStock: number;
-    status: 'in stock' | 'out of stock' | 'reserved' | 'critical' | 'damaged';
-    note?: string;
-    itemInfo?: any;
-    imageUrl?: string;
-    barcode?: string;
-    isPublic?: boolean;
+    purchasePrice?: number;
+    currentValue?: number;
+    condition: 'new' | 'good' | 'used' | 'damaged';
+    status: 'active' | 'consumed' | 'lost' | 'sold' | 'borrowed';
 
-    // Electronics / Physical specs
+    borrowedInfo?: {
+        borrower: string;
+        dateBorrowed: Date;
+        dueDate?: Date;
+        returnedDate?: Date;
+        note?: string;
+    };
+
+    expiryDate?: Date;
+    warrantyDate?: Date;
+    serialNumber?: string;
+    barcode?: string;
+    note?: string;
+    imageUrls: string[]; // Support multiple images
+    tags: string[];
+
+    // Legacy/Extra Info
     brand?: string;
     modelNumber?: string;
-    warrantyDate?: Date;
-    maintenanceFrequency?: number; // In days
+    maintenanceFrequency?: number;
 
     batches: Array<{
         id?: string;
@@ -39,7 +50,9 @@ export interface IItem extends Document {
         qty: number;
         date: Date;
         note?: string;
+        performedBy?: string;
     }>;
+    lastUpdatedBy?: string;
 }
 
 const ItemSchema: Schema = new Schema({
@@ -50,33 +63,46 @@ const ItemSchema: Schema = new Schema({
     categoryId: { type: Schema.Types.ObjectId, ref: 'Category' },
     category: {
         type: String,
-        enum: ['food', 'electronics', 'general', 'medical', 'clothing', 'tools'],
+        enum: ['food', 'electronics', 'general', 'medical', 'clothing', 'tools', 'vehicle', 'collectible', 'furniture', 'books', 'pet', 'document', 'cosmetic'],
         default: 'general'
     },
+    subcategory: { type: String },
     customFields: { type: Map, of: Schema.Types.Mixed },
 
+    // Core Fields
     owner: { type: String },
     purchaseDate: { type: Date },
-    price: { type: Number, default: 0 },
-    expiryDate: { type: Date },
-    maintenanceDate: { type: Date },
-    lastChecked: { type: Date },
-    minStock: { type: Number, default: 1 },
+    purchasePrice: { type: Number, default: 0 },
+    currentValue: { type: Number, default: 0 },
+    condition: {
+        type: String,
+        enum: ['new', 'good', 'used', 'damaged'],
+        default: 'good'
+    },
     status: {
         type: String,
-        enum: ['in stock', 'out of stock', 'reserved', 'critical', 'damaged'],
-        default: 'in stock'
+        enum: ['active', 'consumed', 'lost', 'sold', 'borrowed'],
+        default: 'active'
     },
-    note: { type: String },
-    itemInfo: { type: Schema.Types.Mixed },
-    imageUrl: { type: String },
-    barcode: { type: String },
-    isPublic: { type: Boolean, default: false },
+    borrowedInfo: {
+        borrower: String,
+        dateBorrowed: Date,
+        dueDate: Date,
+        returnedDate: Date,
+        note: String
+    },
 
-    // Sub-category fields (Electronics)
+    expiryDate: { type: Date },
+    warrantyDate: { type: Date },
+    serialNumber: { type: String },
+    barcode: { type: String },
+    note: { type: String },
+    imageUrls: [{ type: String }],
+    tags: [{ type: String }],
+
+    // Extra
     brand: { type: String },
     modelNumber: { type: String },
-    warrantyDate: { type: Date },
     maintenanceFrequency: { type: Number },
 
     batches: [{
@@ -89,8 +115,10 @@ const ItemSchema: Schema = new Schema({
     quantityHistory: [{
         qty: { type: Number },
         date: { type: Date, default: Date.now },
-        note: { type: String }
-    }]
+        note: { type: String },
+        performedBy: { type: String }
+    }],
+    lastUpdatedBy: { type: String }
 }, {
     timestamps: true,
 });

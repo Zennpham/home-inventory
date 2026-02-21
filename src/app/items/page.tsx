@@ -13,6 +13,9 @@ const CATEGORIES = [
     { value: 'medical', label: 'Thuốc' },
     { value: 'clothing', label: 'Quần áo' },
     { value: 'tools', label: 'Dụng cụ' },
+    { value: 'vehicle', label: 'Xe cộ' },
+    { value: 'collectible', label: 'Sưu tầm' },
+    { value: 'furniture', label: 'Nội thất' },
 ];
 
 export default function ItemsPage() {
@@ -41,13 +44,21 @@ export default function ItemsPage() {
         fetchData();
     }, []);
 
+    const removeAccents = (str: string) => {
+        return str.normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/đ/g, 'd')
+            .replace(/Đ/g, 'D');
+    };
+
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [filterSort, setFilterSort] = useState('newest'); // newest, alpha-asc, alpha-desc, qty-asc, qty-desc
     const [filterExpiry, setFilterExpiry] = useState(false); // only expiring
 
     // Derived filteredItems update...
     const filteredItems = items.filter(item => {
-        const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());
+        const normalizedSearch = removeAccents(search.toLowerCase());
+        const matchesSearch = removeAccents(item.name.toLowerCase()).includes(normalizedSearch);
         const matchesLocation = filterLocation === 'all' || item.location?._id === filterLocation;
         const matchesCategory = filterCategory === 'all' || item.category === filterCategory;
         const matchesExpiry = !filterExpiry || (item.expiryDate && new Date(item.expiryDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
@@ -257,8 +268,8 @@ export default function ItemsPage() {
                         className="flex items-center gap-2.5 p-2.5 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 shadow-sm group hover:shadow-md transition-shadow"
                     >
                         <div className="w-12 h-12 bg-zinc-100 dark:bg-zinc-800 rounded-xl overflow-hidden flex-shrink-0 relative">
-                            {item.imageUrl ? (
-                                <img src={item.imageUrl} className="w-full h-full object-cover" alt={item.name} />
+                            {(item.displayImage || item.imageUrl) ? (
+                                <img src={item.displayImage || item.imageUrl} className="w-full h-full object-cover" alt={item.name} />
                             ) : (
                                 <Package className="w-full h-full p-2.5 text-zinc-400 mix-blend-multiply opacity-50 block mx-auto" />
                             )}

@@ -60,24 +60,33 @@ export async function PATCH(
 
         // Log activity if quantity changed
         if (body.quantity !== undefined && body.quantity !== existingItem.quantity) {
-            // Push to quantityHistory for charting
+            const runner = body.performedBy || 'Admin';
+            // Push to quantityHistory for charting and per-item tracking
             body.$push = {
-                quantityHistory: { qty: body.quantity, date: new Date(), note: body.historyNote || undefined }
+                quantityHistory: {
+                    qty: body.quantity,
+                    date: new Date(),
+                    note: body.historyNote || undefined,
+                    performedBy: runner
+                }
             };
+            body.lastUpdatedBy = runner;
+
             await Activity.create({
                 itemId: id,
                 type: body.quantity > existingItem.quantity ? 'add' : 'remove',
                 amount: Math.abs(body.quantity - existingItem.quantity),
-                user: body.performedBy || 'Admin',
+                user: runner,
                 timestamp: new Date()
             });
-        } else {
-            // General update activity
+        } else if (body.performedBy) {
+            // Track who updated general info
+            body.lastUpdatedBy = body.performedBy;
             await Activity.create({
                 itemId: id,
                 type: 'update',
                 amount: 0,
-                user: body.performedBy || 'Admin',
+                user: body.performedBy,
                 timestamp: new Date()
             });
         }

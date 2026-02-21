@@ -1,9 +1,9 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IFamilyMember extends Document {
-    name: string;           // "Mẹ", "Ba", "Em Trai"
-    token: string;          // Secret token for URL-based auth
-    pin?: string;           // 4-digit PIN for login
+    name: string;
+    token: string;
+    pin: string;
     permissions: {
         canAddItems: boolean;
         canEditItems: boolean;
@@ -16,7 +16,7 @@ export interface IFamilyMember extends Document {
 const FamilyMemberSchema: Schema = new Schema({
     name: { type: String, required: true },
     token: { type: String, required: true, unique: true },
-    pin: { type: String },  // Optional 4-digit PIN
+    pin: { type: String, required: true },
     permissions: {
         canAddItems: { type: Boolean, default: true },
         canEditItems: { type: Boolean, default: false },
@@ -26,4 +26,5 @@ const FamilyMemberSchema: Schema = new Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
+// Regular model export
 export default mongoose.models.FamilyMember || mongoose.model<IFamilyMember>('FamilyMember', FamilyMemberSchema);

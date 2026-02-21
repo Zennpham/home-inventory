@@ -15,7 +15,7 @@ interface UserContextType {
     permissions: UserPermissions;
     token: string | null;
     isLoading: boolean;
-    login: (pin: string) => Promise<{ success: boolean; error?: string }>;
+    login: (pin: string, name?: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => void;
 }
 
@@ -90,12 +90,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         }
     }, [applySession]);
 
-    const login = useCallback(async (pin: string): Promise<{ success: boolean; error?: string }> => {
+    const login = useCallback(async (pin: string, name?: string): Promise<{ success: boolean; error?: string }> => {
         try {
             const res = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pin })
+                body: JSON.stringify({ pin, name })
             });
             const data = await res.json();
             if (!res.ok) return { success: false, error: data.error || 'PIN sai' };
