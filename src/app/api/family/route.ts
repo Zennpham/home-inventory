@@ -7,7 +7,7 @@ import crypto from 'crypto';
 export async function GET() {
     try {
         await dbConnect();
-        const members = await FamilyMember.find({}).select('-token').lean(); // Hide tokens in list
+        const members = await FamilyMember.find({}).select('-token').lean(); // token hidden, pin visible for admin
         return NextResponse.json(members);
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });

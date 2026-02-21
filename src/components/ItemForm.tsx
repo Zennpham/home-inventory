@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Save, X, Camera, Barcode, MapPin, Plus, Minus, Calendar, DollarSign, User, Tag } from 'lucide-react';
 import BarcodeScanner from './BarcodeScanner';
 import CascadingLocationPicker from './CascadingLocationPicker';
@@ -58,6 +59,8 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
     const [isScanningStatus, setIsScanningStatus] = useState('');
     const [showLocationPicker, setShowLocationPicker] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [aiStatus, setAiStatus] = useState('');
     const [categories, setCategories] = useState<CategoryOption[]>([]);
     const [customFieldValues, setCustomFieldValues] = useState<Record<string, any>>(
         initialData?.customFields ? Object.fromEntries(initialData.customFields) : {}
@@ -120,12 +123,11 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
             const reader = new FileReader();
             reader.onload = (event) => {
                 const img = new Image();
-                img.onload = () => {
+                img.onload = async () => {
                     // Compress image using Canvas
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
 
-                    // Max dimension (e.g. 800px)
                     const MAX_WIDTH = 800;
                     const scaleSize = MAX_WIDTH / img.width;
                     const width = (img.width > MAX_WIDTH) ? MAX_WIDTH : img.width;
@@ -133,12 +135,38 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
 
                     canvas.width = width;
                     canvas.height = height;
-
                     ctx?.drawImage(img, 0, 0, width, height);
 
-                    // Convert to Base64 with quality 0.6
                     const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
                     setFormData(prev => ({ ...prev, imageUrl: compressedBase64 }));
+
+                    // Trigger Magic AI Analysis
+                    setIsAnalyzing(true);
+                    setAiStatus('Magic AI đang phân tích ảnh...');
+                    try {
+                        const res = await fetch('/api/ai/analyze', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ image: compressedBase64 })
+                        });
+                        const data = await res.json();
+                        if (data.success && data.analysis) {
+                            const { name, category, unit, description } = data.analysis;
+                            setFormData(prev => ({
+                                ...prev,
+                                name: prev.name || name,
+                                category: prev.category === 'general' ? category : prev.category,
+                                unit: prev.unit === 'pcs' ? unit : prev.unit,
+                                note: prev.note ? `${prev.note}\n\n${description}` : description
+                            }));
+                            setAiStatus('✨ AI đã nhận diện xong!');
+                        }
+                    } catch (err) {
+                        console.error("AI Analysis failed", err);
+                        setAiStatus('AI bận rồi, hãy điền tay nhé.');
+                    } finally {
+                        setTimeout(() => { setIsAnalyzing(false); setAiStatus(''); }, 3000);
+                    }
                 };
                 img.src = event.target?.result as string;
             };
@@ -257,15 +285,35 @@ export default function ItemForm({ initialData, locations: initialLocations, onS
                                 </div>
                             </div>
 
-                            {/* Preview */}
-                            <div className="w-24 h-24 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-50 dark:bg-zinc-900 flex-shrink-0 flex items-center justify-center">
+                            {/* Preview with AI Loading */}
+                            <div className="relative w-24 h-24 rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-50 dark:bg-zinc-900 flex-shrink-0 flex items-center justify-center">
                                 {formData.imageUrl ? (
-                                    <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                                    <>
+                                        <img src={formData.imageUrl} alt="Preview" className={`w-full h-full object-cover transition-opacity ${isAnalyzing ? 'opacity-40' : 'opacity-100'}`} onError={(e) => (e.currentTarget.style.display = 'none')} />
+                                        {isAnalyzing && (
+                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                <div className="w-8 h-8 border-2 border-zinc-900 dark:border-white border-t-transparent rounded-full animate-spin" />
+                                            </div>
+                                        )}
+                                    </>
                                 ) : (
                                     <Camera className="w-8 h-8 text-zinc-300" />
                                 )}
                             </div>
                         </div>
+                        <AnimatePresence>
+                            {aiStatus && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0 }}
+                                    className="mt-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900 rounded-lg flex items-center gap-2"
+                                >
+                                    <span className="animate-pulse">✨</span>
+                                    <p className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">{aiStatus}</p>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
 
                     {/* Name with Autocomplete */}
