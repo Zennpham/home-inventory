@@ -72,7 +72,11 @@ export default function Dashboard() {
     fetch('/api/ai/recipes')
       .then(res => res.json())
       .then(data => {
-        if (data.success) setRecipes(data.recipes);
+        if (data.success && Array.isArray(data.recipes)) {
+          setRecipes(data.recipes);
+        } else {
+          setRecipes([]);
+        }
       })
       .catch(() => { })
       .finally(() => setLoadingRecipes(false));

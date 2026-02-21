@@ -22,7 +22,13 @@ export default function LoginPage() {
             .then(data => {
                 const guestMember = { name: 'Khách', role: 'guest' };
                 const adminMember = { name: 'Hngan', role: 'admin' };
-                setMembers([guestMember, adminMember, ...data]);
+
+                // Filter out any members from DB that might have the same name as our hardcoded ones
+                const dbMembers = Array.isArray(data) ? data.filter((m: any) =>
+                    m.name !== 'Khách' && m.name !== 'Hngan' && m.name !== 'Admin'
+                ) : [];
+
+                setMembers([guestMember, adminMember, ...dbMembers]);
             })
             .catch(console.error);
     }, []);
@@ -79,7 +85,7 @@ export default function LoginPage() {
                         <div className="grid grid-cols-2 gap-4">
                             {members.map(member => (
                                 <button
-                                    key={member.name}
+                                    key={member._id || member.name}
                                     onClick={() => {
                                         if (member.role === 'guest') {
                                             handleGuestLogin();

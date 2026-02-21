@@ -55,14 +55,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         const isLocalhost = window.location.hostname === 'localhost' ||
             window.location.hostname === '127.0.0.1';
 
-        if (isLocalhost) {
-            setRole('admin');
-            setName('Hngan (Local)');
-            setPermissions({ canAddItems: true, canEditItems: true, canDeleteItems: true, canManageLocations: true });
-            setIsLoading(false);
-            return;
-        }
-
         // Check URL token first (from share links)
         const urlParams = new URLSearchParams(window.location.search);
         const urlToken = urlParams.get('token');
@@ -71,6 +63,17 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         const stored = localStorage.getItem('homeInv_session');
         const savedSession = stored ? JSON.parse(stored) : null;
         const tokenToUse = urlToken || savedSession?.token;
+
+        if (isLocalhost && !tokenToUse) {
+            const hasExplicitGuest = localStorage.getItem('homeInv_explicit_guest');
+            if (!hasExplicitGuest) {
+                setRole('admin');
+                setName('Hngan (Local)');
+                setPermissions({ canAddItems: true, canEditItems: true, canDeleteItems: true, canManageLocations: true });
+                setIsLoading(false);
+                return;
+            }
+        }
 
         if (tokenToUse) {
             fetch(`/api/auth/me?token=${tokenToUse}`)
@@ -81,6 +84,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                         if (urlToken) {
                             localStorage.setItem('homeInv_session', JSON.stringify({ token: urlToken, ...data }));
                         }
+                        localStorage.removeItem('homeInv_explicit_guest');
                     }
                 })
                 .catch(console.error)
@@ -102,6 +106,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
             applySession(data);
             localStorage.setItem('homeInv_session', JSON.stringify(data));
+            localStorage.removeItem('homeInv_explicit_guest');
             return { success: true };
         } catch {
             return { success: false, error: 'Lỗi kết nối' };
@@ -110,6 +115,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
     const logout = useCallback(() => {
         localStorage.removeItem('homeInv_session');
+        localStorage.setItem('homeInv_explicit_guest', 'true');
         setRole('guest');
         setName('Khách');
         setPermissions(defaultPermissions);
