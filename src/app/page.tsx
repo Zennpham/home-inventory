@@ -105,18 +105,18 @@ export default function Dashboard() {
     <div className="min-h-screen p-3 md:p-4 max-w-2xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div className="space-y-1.5">
-          <div className="w-36 h-6 bg-zinc-200 dark:bg-zinc-800 rounded-lg animate-pulse"></div>
-          <div className="w-24 h-3 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse"></div>
+          <div className="w-36 h-6 bg-zinc-200 dark:bg-zinc-800 rounded-lg animate-[pulse_1s_infinite]"></div>
+          <div className="w-24 h-3 bg-zinc-200 dark:bg-zinc-800 rounded animate-[pulse_1s_infinite]"></div>
         </div>
-        <div className="w-10 h-10 bg-zinc-200 dark:bg-zinc-800 rounded-full animate-pulse"></div>
+        <div className="w-10 h-10 bg-zinc-200 dark:bg-zinc-800 rounded-full animate-[pulse_1s_infinite]"></div>
       </div>
-      <div className="w-full h-12 bg-zinc-200 dark:bg-zinc-800 rounded-2xl animate-pulse mb-5"></div>
+      <div className="w-full h-12 bg-zinc-200 dark:bg-zinc-800 rounded-2xl animate-[pulse_1s_infinite] mb-5"></div>
       <div className="grid grid-cols-3 gap-2 mb-5">
-        {[1, 2, 3].map(i => <div key={i} className="h-20 bg-zinc-100 dark:bg-zinc-900 rounded-2xl animate-pulse"></div>)}
+        {[1, 2, 3].map(i => <div key={i} className="h-20 bg-zinc-100 dark:bg-zinc-900 rounded-2xl animate-[pulse_1s_infinite]"></div>)}
       </div>
       <div className="space-y-3">
-        <div className="w-32 h-4 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse"></div>
-        {[1, 2, 3, 4].map(i => <div key={i} className="w-full h-14 bg-zinc-100 dark:bg-zinc-900 rounded-2xl animate-pulse"></div>)}
+        <div className="w-32 h-4 bg-zinc-200 dark:bg-zinc-800 rounded animate-[pulse_1s_infinite]"></div>
+        {[1, 2, 3, 4].map(i => <div key={i} className="w-full h-14 bg-zinc-100 dark:bg-zinc-900 rounded-2xl animate-[pulse_1s_infinite]"></div>)}
       </div>
     </div>
   );
@@ -148,9 +148,9 @@ export default function Dashboard() {
         {/* Search Results */}
         {searchQuery.length > 1 && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="mt-2 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xl overflow-hidden divide-y divide-zinc-100 dark:divide-zinc-800 z-10 relative"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.05 }}
           >
             {searchResults.length > 0 ? searchResults.map(item => (
               <Link key={item._id} href={`/items/${item._id}`} className="flex items-center gap-2 p-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">

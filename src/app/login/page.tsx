@@ -69,13 +69,14 @@ export default function LoginPage() {
 
     return (
         <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-6 text-white">
-            <AnimatePresence mode="wait">
+            <AnimatePresence>
                 {!selectedMember ? (
                     <motion.div
                         key="selector"
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.05 }}
                         className="w-full max-w-sm"
                     >
                         <div className="text-center mb-10">
@@ -111,9 +112,10 @@ export default function LoginPage() {
                 ) : (
                     <motion.div
                         key="numpad"
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.05 }}
                         className="flex flex-col items-center w-full"
                     >
                         <button
