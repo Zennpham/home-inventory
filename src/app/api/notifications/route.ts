@@ -21,8 +21,8 @@ export async function GET() {
                 const alreadyNotified = existingNotifications.find(n => n.itemId?.toString() === item._id.toString() && n.type === 'low-stock');
                 if (!alreadyNotified) {
                     newNotifications.push({
-                        title: 'Low Stock Alert',
-                        message: `${item.name} is running low (${item.quantity} ${item.unit} remaining)`,
+                        title: 'Sắp hết đồ',
+                        message: `${item.name} sắp hết (chỉ còn ${item.quantity} ${item.unit})`,
                         type: 'low-stock',
                         itemId: item._id,
                     });
@@ -35,9 +35,24 @@ export async function GET() {
                     const alreadyNotified = existingNotifications.find(n => n.itemId?.toString() === item._id.toString() && n.type === 'expiry');
                     if (!alreadyNotified) {
                         newNotifications.push({
-                            title: 'Expiry Warning',
-                            message: `${item.name} is expiring in ${daysUntilExpiry} days`,
+                            title: 'Sắp hết hạn',
+                            message: `${item.name} sẽ hết hạn trong ${daysUntilExpiry} ngày tới`,
                             type: 'expiry',
+                            itemId: item._id,
+                        });
+                    }
+                }
+            }
+
+            if (item.maintenanceDate) {
+                const daysUntilMaint = Math.ceil((new Date(item.maintenanceDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                if (daysUntilMaint <= 7 && daysUntilMaint >= 0) {
+                    const alreadyNotified = existingNotifications.find(n => n.itemId?.toString() === item._id.toString() && n.type === 'maintenance');
+                    if (!alreadyNotified) {
+                        newNotifications.push({
+                            title: 'Bảo trì',
+                            message: `${item.name} cần được bảo trì trong ${daysUntilMaint} ngày tới`,
+                            type: 'maintenance',
                             itemId: item._id,
                         });
                     }
@@ -53,8 +68,8 @@ export async function GET() {
                     const alreadyNotified = existingNotifications.find(n => n.message?.includes(sub.serviceName));
                     if (!alreadyNotified) {
                         newNotifications.push({
-                            title: 'Subscription Renewal',
-                            message: `${sub.serviceName} will renew in ${daysUntilRenewal} days`,
+                            title: 'Gia hạn gói cước',
+                            message: `${sub.serviceName} sẽ được gia hạn trong ${daysUntilRenewal} ngày tới`,
                             type: 'expiry',
                         });
                     }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Location from '@/models/Location';
+import Item from '@/models/Item';
 
 export async function PATCH(
     request: Request,
@@ -10,6 +11,11 @@ export async function PATCH(
         const { id } = await params;
         await dbConnect();
         const body = await request.json();
+
+        // Convert empty parentId string to null
+        if (body.parentId === '') {
+            body.parentId = null;
+        }
 
         const existingLocation = await Location.findById(id);
         if (!existingLocation) {
@@ -46,10 +52,20 @@ export async function DELETE(
         const { id } = await params;
         await dbConnect();
 
-        // Prevent deleting location if it has children
+        // Check if location has items
+        const itemsInLocation = await Item.countDocuments({ location: id });
+        if (itemsInLocation > 0) {
+            return NextResponse.json({
+                error: `Cannot delete location. It contains ${itemsInLocation} item(s). Please move or delete items first.`
+            }, { status: 400 });
+        }
+
+        // Check if location has children
         const children = await Location.findOne({ parentId: id });
         if (children) {
-            return NextResponse.json({ error: 'Cannot delete location with children. Please delete children first.' }, { status: 400 });
+            return NextResponse.json({
+                error: 'Cannot delete location with child locations. Please delete or move children first.'
+            }, { status: 400 });
         }
 
         const location = await Location.findByIdAndDelete(id);

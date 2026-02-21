@@ -12,21 +12,31 @@ export async function GET() {
         // Calculate recursive counts and path segments
         const locationsWithMetadata = locations.map((loc: any) => {
             // Recursive count logic
-            const getChildrenIds = (parentId: string): string[] => {
+            const getChildrenIds = (parentId: string, visited: Set<string> = new Set()): string[] => {
+                if (visited.has(parentId)) return [];
+                visited.add(parentId);
                 const children = locations.filter((l: any) => (l.parentId?._id?.toString() || l.parentId?.toString()) === parentId);
-                return children.reduce((acc: string[], child: any) => [...acc, child._id.toString(), ...getChildrenIds(child._id.toString())], [] as string[]);
+                return children.reduce((acc: string[], child: any) => [...acc, child._id.toString(), ...getChildrenIds(child._id.toString(), new Set(visited))], [] as string[]);
             };
 
             const allSubLocationIds = [loc._id.toString(), ...getChildrenIds(loc._id.toString())];
-            const totalItems = items.filter((item: any) => allSubLocationIds.includes(item.location.toString())).length;
+            const totalItems = items.filter((item: any) => item.location && allSubLocationIds.includes(item.location.toString())).length;
 
             // Path segments logic
-            const getSegments = (currentLoc: any): any[] => {
-                const parent = locations.find(l => l._id.toString() === (currentLoc.parentId?._id?.toString() || currentLoc.parentId?.toString()));
-                if (parent) {
-                    return [...getSegments(parent), { name: currentLoc.name, id: currentLoc._id, type: 'location', nfcId: currentLoc.nfcId }];
+            const getSegments = (currentLoc: any, visited: Set<string> = new Set()): any[] => {
+                if (!currentLoc) return [];
+                if (visited.has(currentLoc._id.toString())) {
+                    // Prevent circular dependency
+                    return [{ name: currentLoc.name, id: currentLoc._id, type: 'location', nfcId: currentLoc.nfcId }];
                 }
-                return [{ name: currentLoc.name, id: currentLoc._id, type: 'location', nfcId: currentLoc.nfcId }];
+                visited.add(currentLoc._id.toString());
+                const parent = locations.find(l => l._id.toString() === (currentLoc.parentId?._id?.toString() || currentLoc.parentId?.toString()));
+                const baseSegment = { name: currentLoc.name, id: currentLoc._id, type: 'location', nfcId: currentLoc.nfcId };
+
+                if (parent) {
+                    return [...getSegments(parent, new Set(visited)), baseSegment];
+                }
+                return [baseSegment];
             };
 
             return {
@@ -46,6 +56,11 @@ export async function POST(request: Request) {
     try {
         await dbConnect();
         const body = await request.json();
+
+        // Convert empty parentId string to null
+        if (body.parentId === '') {
+            body.parentId = null;
+        }
 
         // Calculate path if parentId is provided
         if (body.parentId) {

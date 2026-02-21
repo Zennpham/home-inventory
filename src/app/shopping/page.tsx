@@ -10,11 +10,7 @@ import {
     ArrowLeft,
     ShoppingBag,
     AlertCircle,
-    ChevronRight,
-    Search,
-    X,
-    MoreHorizontal,
-    PlusCircle
+    X
 } from 'lucide-react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -34,7 +30,6 @@ export default function ShoppingListPage() {
                     fetch('/api/items'),
                     fetch('/api/shopping')
                 ]);
-
                 if (invRes.ok) {
                     const data = await invRes.json();
                     setInventoryItems(data.filter((i: any) => i.quantity <= i.minStock));
@@ -54,7 +49,6 @@ export default function ShoppingListPage() {
     const handleRestock = async (itemId: string, currentMin: number) => {
         const newQty = prompt('Nhập số lượng mới:', String(currentMin + 5));
         if (!newQty) return;
-
         try {
             const res = await fetch(`/api/items/${itemId}`, {
                 method: 'PATCH',
@@ -72,7 +66,6 @@ export default function ShoppingListPage() {
     const handleAddManualItem = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newItemName.trim()) return;
-
         try {
             const res = await fetch('/api/shopping', {
                 method: 'POST',
@@ -118,43 +111,90 @@ export default function ShoppingListPage() {
         }
     };
 
+    const handleSync = async () => {
+        try {
+            setLoading(true);
+            const res = await fetch('/api/shopping/sync', { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+                alert(data.message);
+                window.location.reload();
+            }
+        } catch (e) { console.error(e) }
+        finally { setLoading(false); }
+    };
+
     if (loading) return (
-        <div className="min-h-screen flex items-center justify-center bg-white dark:bg-zinc-950">
-            <div className="w-10 h-10 border-4 border-zinc-900 dark:border-white border-t-transparent rounded-full animate-spin"></div>
+        <div className="min-h-screen p-3 md:p-4 max-w-2xl mx-auto space-y-6">
+            <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 bg-zinc-200 dark:bg-zinc-800 rounded-xl animate-pulse"></div>
+                    <div className="space-y-1">
+                        <div className="w-24 h-5 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse"></div>
+                        <div className="w-16 h-3 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse"></div>
+                    </div>
+                </div>
+                <div className="flex gap-2">
+                    <div className="w-24 h-8 bg-zinc-200 dark:bg-zinc-800 rounded-xl animate-pulse"></div>
+                    <div className="w-24 h-8 bg-zinc-200 dark:bg-zinc-800 rounded-xl animate-pulse"></div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <div className="w-32 h-4 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-3"></div>
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="w-full h-14 bg-zinc-100 dark:bg-zinc-900 rounded-xl animate-pulse"></div>
+                    ))}
+                </div>
+                <div className="space-y-2">
+                    <div className="w-32 h-4 bg-zinc-200 dark:bg-zinc-800 rounded animate-pulse mb-3"></div>
+                    {[1, 2].map(i => (
+                        <div key={i} className="w-full h-14 bg-zinc-100 dark:bg-zinc-900 rounded-xl animate-pulse"></div>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 
     return (
-        <div className="min-h-screen p-6 md:p-12 max-w-[1000px] mx-auto space-y-12 bg-white dark:bg-zinc-950">
-            {/* Minimalist Header */}
-            <header className="flex flex-col md:flex-row justify-between items-start gap-8">
-                <div className="space-y-4">
-                    <div className="flex items-center gap-4">
-                        <Link href="/" className="p-3 bg-zinc-100 dark:bg-zinc-900 rounded-2xl hover:bg-zinc-200 transition-colors">
-                            <ArrowLeft className="w-6 h-6" />
-                        </Link>
-                        <h1 className="text-5xl font-black tracking-tighter">Shopping <span className="gradient-text">List</span></h1>
+        <div className="min-h-screen p-3 md:p-4 max-w-2xl mx-auto">
+            {/* Header */}
+            <header className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                    <Link href="/" className="p-2 bg-zinc-100 dark:bg-zinc-900 rounded-xl">
+                        <ArrowLeft className="w-4 h-4" />
+                    </Link>
+                    <div>
+                        <h1 className="text-lg font-black">Mua sắm</h1>
+                        <p className="text-xs text-zinc-500">{inventoryItems.length + manualItems.length} món cần mua</p>
                     </div>
-                    <p className="text-zinc-500 text-lg font-medium">Bạn có {inventoryItems.length + manualItems.length} món cần mua.</p>
                 </div>
-
-                <button
-                    onClick={() => setShowAddModal(true)}
-                    className="px-8 py-4 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-[32px] font-black flex items-center gap-3 hover:scale-105 transition-all shadow-xl shadow-zinc-200 dark:shadow-none"
-                >
-                    <Plus className="w-6 h-6" /> Thêm nhanh
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleSync}
+                        className="px-3 py-2 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 rounded-xl text-xs font-bold flex items-center gap-1.5"
+                    >
+                        <ShoppingCart className="w-4 h-4" /> Đồng bộ
+                    </button>
+                    <button
+                        onClick={() => setShowAddModal(true)}
+                        className="px-3 py-2 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-xl text-xs font-bold flex items-center gap-1.5"
+                    >
+                        <Plus className="w-4 h-4" /> Thêm tay
+                    </button>
+                </div>
             </header>
 
-            {/* Filter Tabs */}
-            <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-2xl w-fit">
+            {/* Tabs */}
+            <div className="flex gap-1 p-1 bg-zinc-100 dark:bg-zinc-900 rounded-xl mb-4 w-fit">
                 {(['all', 'inventory', 'manual'] as const).map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab
-                                ? 'bg-white dark:bg-zinc-800 shadow-md text-zinc-900 dark:text-white'
-                                : 'text-zinc-500 hover:text-zinc-700'
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all ${activeTab === tab
+                            ? 'bg-white dark:bg-zinc-800 shadow text-zinc-900 dark:text-white'
+                            : 'text-zinc-500'
                             }`}
                     >
                         {tab === 'all' ? 'Tất cả' : tab === 'inventory' ? 'Sắp hết' : 'Thủ công'}
@@ -162,122 +202,126 @@ export default function ShoppingListPage() {
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                {/* Manual List Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Manual List */}
                 {(activeTab === 'all' || activeTab === 'manual') && (
-                    <section className="space-y-6">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-2xl font-black flex items-center gap-3">
-                                <ShoppingBag className="w-6 h-6 text-zinc-400" /> Danh sách mua
-                            </h2>
-                            <span className="text-xs font-black uppercase text-zinc-400 bg-zinc-100 dark:bg-zinc-900 px-3 py-1 rounded-full">
-                                {manualItems.length} món
+                    <section>
+                        <div className="flex items-center justify-between mb-2">
+                            <p className="text-[10px] font-bold uppercase text-zinc-500 flex items-center gap-1.5">
+                                <ShoppingBag className="w-3.5 h-3.5" /> Danh sách mua
+                            </p>
+                            <span className="text-[10px] font-bold text-zinc-400 bg-zinc-100 dark:bg-zinc-900 px-2 py-0.5 rounded-full">
+                                {manualItems.length}
                             </span>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="space-y-1.5">
                             <AnimatePresence mode="popLayout">
                                 {manualItems.map(item => (
                                     <motion.div
                                         key={item._id}
                                         layout
-                                        initial={{ opacity: 0, x: -10 }}
+                                        initial={{ opacity: 0, x: -5 }}
                                         animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, scale: 0.95 }}
-                                        className={`group flex items-center gap-4 p-5 rounded-3xl border transition-all ${item.checked
-                                                ? 'bg-zinc-50 dark:bg-zinc-900/50 border-zinc-100 dark:border-zinc-800 opacity-60'
-                                                : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:border-zinc-900 dark:hover:border-white'
+                                        exit={{ opacity: 0, x: -100, scale: 0.95 }}
+                                        drag="x"
+                                        dragConstraints={{ left: 0, right: 0 }}
+                                        dragElastic={0.4}
+                                        onDragEnd={(e, { offset, velocity }) => {
+                                            if (offset.x < -100 || (offset.x < -50 && velocity.x < -500)) {
+                                                deleteManualItem(item._id);
+                                            } else if (offset.x > 100 || (offset.x > 50 && velocity.x > 500)) {
+                                                toggleManualItem(item._id, item.checked);
+                                            }
+                                        }}
+                                        className={`group flex items-center gap-2 p-2.5 rounded-xl border transition-all touch-pan-y shadow-sm cursor-grab active:cursor-grabbing ${item.checked
+                                            ? 'bg-zinc-50 dark:bg-zinc-900/50 border-zinc-100 dark:border-zinc-800 opacity-50'
+                                            : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 hover:shadow-md'
                                             }`}
                                     >
-                                        <button
-                                            onClick={() => toggleManualItem(item._id, item.checked)}
-                                            className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${item.checked
-                                                    ? 'bg-zinc-900 dark:bg-white border-zinc-900 dark:border-white text-white dark:text-black'
-                                                    : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-900 dark:hover:border-white'
-                                                }`}
-                                        >
-                                            {item.checked && <Check className="w-5 h-5" />}
-                                        </button>
-                                        <div className="flex-1 min-w-0">
-                                            <p className={`font-bold text-lg ${item.checked ? 'line-through text-zinc-400' : ''}`}>
-                                                {item.name}
-                                            </p>
+                                        <div className="absolute -z-10 bg-rose-500 rounded-xl inset-y-0 right-0 w-1/2 flex items-center justify-end px-4 text-white">
+                                            <Trash2 className="w-4 h-4" />
+                                        </div>
+                                        <div className="absolute -z-10 bg-emerald-500 rounded-xl inset-y-0 left-0 w-1/2 flex items-center justify-start px-4 text-white">
+                                            <Check className="w-4 h-4" />
                                         </div>
                                         <button
-                                            onClick={() => deleteManualItem(item._id)}
-                                            className="p-2 text-zinc-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"
+                                            onClick={() => toggleManualItem(item._id, item.checked)}
+                                            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 bg-white dark:bg-zinc-900 ${item.checked
+                                                ? 'bg-zinc-900 dark:bg-white border-zinc-900 dark:border-white text-white dark:text-black'
+                                                : 'border-zinc-200 dark:border-zinc-700'
+                                                }`}
                                         >
-                                            <Trash2 className="w-5 h-5" />
+                                            {item.checked && <Check className="w-3 h-3" />}
+                                        </button>
+                                        <span className={`flex-1 text-sm font-medium bg-transparent pointer-events-none select-none ${item.checked ? 'line-through text-zinc-400' : ''}`}>
+                                            {item.name}
+                                        </span>
+                                        <button
+                                            onClick={() => deleteManualItem(item._id)}
+                                            className="p-1 text-zinc-300 hover:text-rose-500 opacity-0 md:group-hover:opacity-100 bg-white/50 dark:bg-black/50 rounded pointer-events-auto"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                     </motion.div>
                                 ))}
                             </AnimatePresence>
 
                             {manualItems.length === 0 && (
-                                <div className="text-center py-20 border-2 border-dashed border-zinc-100 dark:border-zinc-800 rounded-[40px]">
-                                    <PlusCircle className="w-12 h-12 mx-auto mb-4 text-zinc-200" />
-                                    <p className="text-zinc-500 font-bold">Chưa có món đồ thủ công nào</p>
-                                    <button
-                                        onClick={() => setShowAddModal(true)}
-                                        className="text-sm font-black text-zinc-900 dark:text-white mt-4 underline"
-                                    >
-                                        Thêm ngay
-                                    </button>
+                                <div className="text-center py-8 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl">
+                                    <p className="text-xs text-zinc-400">Chưa có món nào</p>
                                 </div>
                             )}
                         </div>
                     </section>
                 )}
 
-                {/* Inventory Alert Section */}
+                {/* Inventory Alerts */}
                 {(activeTab === 'all' || activeTab === 'inventory') && (
-                    <section className="space-y-6">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-2xl font-black flex items-center gap-3">
-                                <AlertCircle className="w-6 h-6 text-amber-500" /> Sắp hết trong kho
-                            </h2>
-                            <span className="text-xs font-black uppercase text-amber-500 bg-amber-50 dark:bg-amber-950/20 px-3 py-1 rounded-full">
-                                {inventoryItems.length} cảnh báo
+                    <section>
+                        <div className="flex items-center justify-between mb-2">
+                            <p className="text-[10px] font-bold uppercase text-amber-600 flex items-center gap-1.5">
+                                <AlertCircle className="w-3.5 h-3.5" /> Sắp hết trong kho
+                            </p>
+                            <span className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded-full">
+                                {inventoryItems.length}
                             </span>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="space-y-1.5">
                             {inventoryItems.map(item => (
                                 <div
                                     key={item._id}
-                                    className="flex items-center gap-5 p-5 bg-zinc-50 dark:bg-zinc-900/50 rounded-3xl border border-zinc-100 dark:border-zinc-800 group"
+                                    className="flex items-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900/50 rounded-xl border border-zinc-100 dark:border-zinc-800 group"
                                 >
-                                    <div className="w-16 h-16 bg-white dark:bg-zinc-800 rounded-2xl overflow-hidden flex-shrink-0 shadow-sm">
+                                    <div className="w-10 h-10 bg-white dark:bg-zinc-800 rounded-lg overflow-hidden flex-shrink-0">
                                         {item.imageUrl ? (
-                                            <img src={item.imageUrl} className="w-full h-full object-cover" alt={item.name} />
+                                            <img src={item.imageUrl} className="w-full h-full object-cover" />
                                         ) : (
-                                            <div className="w-full h-full flex items-center justify-center">
-                                                <Package className="w-8 h-8 text-zinc-200" />
-                                            </div>
+                                            <Package className="w-full h-full p-2 text-zinc-300" />
                                         )}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <Link href={`/items/${item._id}`} className="font-black text-lg hover:text-zinc-900 group-hover:underline block truncate">
+                                        <Link href={`/items/${item._id}`} className="text-sm font-medium hover:underline truncate block">
                                             {item.name}
                                         </Link>
-                                        <p className="text-xs font-black uppercase tracking-widest text-zinc-400 mt-1">
-                                            {item.quantity} / {item.minStock} {item.unit}
+                                        <p className="text-[10px] font-bold text-zinc-400">
+                                            {item.quantity}/{item.minStock} {item.unit}
                                         </p>
                                     </div>
                                     <button
                                         onClick={() => handleRestock(item._id, item.minStock)}
-                                        className="p-4 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-2xl hover:scale-105 transition-all shadow-md"
+                                        className="p-2 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-lg"
                                     >
-                                        <Check className="w-6 h-6" />
+                                        <Check className="w-4 h-4" />
                                     </button>
                                 </div>
                             ))}
 
-                            {inventoryItems.length === 0 && (activeTab === 'inventory' || activeTab === 'all') && (
-                                <div className="text-center py-20 bg-emerald-50 dark:bg-emerald-950/10 rounded-[40px] border border-emerald-100 dark:border-emerald-900/30">
-                                    <Check className="w-12 h-12 mx-auto mb-4 text-emerald-500" />
-                                    <p className="text-emerald-700 dark:text-emerald-400 font-bold">Kho bãi ổn định</p>
-                                    <p className="text-xs text-emerald-600/60 mt-2 font-medium">Không có món nào sắp hết.</p>
+                            {inventoryItems.length === 0 && (
+                                <div className="text-center py-8 bg-emerald-50 dark:bg-emerald-950/10 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                                    <Check className="w-6 h-6 mx-auto mb-1 text-emerald-500" />
+                                    <p className="text-xs text-emerald-600">Kho ổn định</p>
                                 </div>
                             )}
                         </div>
@@ -285,37 +329,34 @@ export default function ShoppingListPage() {
                 )}
             </div>
 
-            {/* Quick Add Modal */}
+            {/* Add Modal */}
             <AnimatePresence>
                 {showAddModal && (
-                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-white dark:bg-zinc-900 rounded-[48px] p-10 max-w-xl w-full shadow-2xl space-y-8"
+                            className="bg-white dark:bg-zinc-900 rounded-2xl p-4 max-w-sm w-full shadow-2xl"
                         >
-                            <div className="flex justify-between items-center">
-                                <h2 className="text-3xl font-black">Thêm <span className="text-zinc-400">Nhanh</span></h2>
-                                <button onClick={() => setShowAddModal(false)} className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-2xl">
-                                    <X className="w-6 h-6" />
+                            <div className="flex justify-between items-center mb-3">
+                                <h2 className="text-lg font-black">Thêm nhanh</h2>
+                                <button onClick={() => setShowAddModal(false)} className="p-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
+                                    <X className="w-4 h-4" />
                                 </button>
                             </div>
 
-                            <form onSubmit={handleAddManualItem} className="space-y-6">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black uppercase text-zinc-400">Tên món đồ</label>
-                                    <input
-                                        autoFocus
-                                        required
-                                        value={newItemName}
-                                        onChange={(e) => setNewItemName(e.target.value)}
-                                        className="w-full bg-zinc-50 dark:bg-zinc-800 border-none rounded-2xl py-5 px-8 font-black text-xl outline-none focus:ring-2 focus:ring-zinc-900 transition-all"
-                                        placeholder="Ví dụ: Sữa tươi, Trứng..."
-                                    />
-                                </div>
-                                <button type="submit" className="w-full bg-zinc-950 dark:bg-white text-white dark:text-black py-7 rounded-[32px] font-black text-xl flex items-center justify-center gap-3 transition-all hover:scale-[1.02]">
-                                    <Plus className="w-8 h-8" /> Thêm vào danh sách
+                            <form onSubmit={handleAddManualItem} className="space-y-3">
+                                <input
+                                    autoFocus
+                                    required
+                                    value={newItemName}
+                                    onChange={(e) => setNewItemName(e.target.value)}
+                                    className="w-full bg-zinc-100 dark:bg-zinc-800 rounded-xl py-3 px-4 text-sm font-medium outline-none focus:ring-2 focus:ring-zinc-900"
+                                    placeholder="Tên món đồ..."
+                                />
+                                <button type="submit" className="w-full bg-zinc-900 dark:bg-white text-white dark:text-black py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2">
+                                    <Plus className="w-4 h-4" /> Thêm
                                 </button>
                             </form>
                         </motion.div>

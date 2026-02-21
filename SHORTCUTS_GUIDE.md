@@ -45,7 +45,7 @@ To ensure the database identifies expiring items even without the app running, s
 ### The Automation Script:
 ```javascript
 exports = async function() {
-  const mongodb = context.services.get("mongodb-atlas");
+  const mongodb = context.services.get("Cluster0"); // Thay "Cluster0" bằng tên service của bạn
   const items = mongodb.db("HomeInv").collection("items");
   const notifications = mongodb.db("HomeInv").collection("notifications");
   const subscriptions = mongodb.db("HomeInv").collection("subscriptions");
@@ -53,32 +53,137 @@ exports = async function() {
   const now = new Date();
   const alertThreshold = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000)); // 7 days
 
-  // 1. Find Low Stock Items
+  // 1. Low Stock (with Quantity details)
   const lowStock = await items.find({ $expr: { $lte: ["$quantity", "$minStock"] } }).toArray();
   for (const item of lowStock) {
     await notifications.updateOne(
-      { itemId: item._id, type: "low-stock", read: false },
-      { $setOnInsert: { title: "Low Stock", message: `${item.name} is running low`, type: "low-stock", createdAt: new Date() } },
+      { itemId: item._id, type: "low-stock" }, // Removed read: false requirement
+      { 
+          $set: { 
+              message: `${item.name} is low: only ${item.quantity} ${item.unit} left (Min: ${item.minStock})`,
+              read: false, // Force make it unread (New Notification)
+              updatedAt: new Date()
+          },
+          $setOnInsert: { 
+              title: "Low Stock Alert", 
+              type: "low-stock", 
+              createdAt: new Date() 
+          }
+      },
       { upsert: true }
     );
   }
 
-  // 2. Find Expiring Subscriptions
+  // 2. Expiring Subscriptions (with Days Left)
   const renewals = await subscriptions.find({ renewalDate: { $lte: alertThreshold, $gte: now } }).toArray();
   for (const sub of renewals) {
+    const daysLeft = Math.ceil((new Date(sub.renewalDate) - now) / (1000 * 60 * 60 * 24));
     await notifications.updateOne(
-        { message: { $regex: sub.serviceName }, read: false },
-        { $setOnInsert: { title: "Subscription Renewal", message: `${sub.serviceName} will renew soon`, type: "expiry", createdAt: new Date() } },
+        { message: { $regex: sub.serviceName } },
+        { 
+            $set: { 
+                message: `${sub.serviceName} renews in ${daysLeft} days ($${sub.price})`, 
+                read: false,
+                updatedAt: new Date()
+            },
+            $setOnInsert: { 
+                title: "Subscription Renewal", 
+                type: "expiry", 
+                createdAt: new Date() 
+            }
+        },
         { upsert: true }
     );
   }
+
+  // 3. Expiring Items & Batches
+  const expiringItems = await items.find({
+    $or: [
+      { expiryDate: { $lte: alertThreshold, $gte: now } },
+      { "batches.expiryDate": { $lte: alertThreshold, $gte: now } }
+    ]
+  }).toArray();
+
+  let expiryCount = 0;
+
+  for (const item of expiringItems) {
+    // Check Root Expiry
+    if (item.expiryDate && new Date(item.expiryDate) <= alertThreshold && new Date(item.expiryDate) >= now) {
+        const daysLeft = Math.ceil((new Date(item.expiryDate) - now) / (1000 * 60 * 60 * 24));
+        await notifications.updateOne(
+            { itemId: item._id, type: "expiry", title: "Item Expiring" },
+            { 
+               $set: { 
+                 message: `${item.name} expires in ${daysLeft} days`, 
+                 read: false, // Nag user again
+                 updatedAt: new Date()
+               },
+               $setOnInsert: { 
+                 title: "Item Expiring", 
+                 type: "expiry", 
+                 locationName: "Inventory", 
+                 createdAt: new Date() 
+               }
+            },
+            { upsert: true }
+        );
+        expiryCount++;
+    }
+
+    // Check Batches
+    if (item.batches && item.batches.length > 0) {
+        for (const batch of item.batches) {
+            if (batch.expiryDate && new Date(batch.expiryDate) <= alertThreshold && new Date(batch.expiryDate) >= now) {
+                const daysLeft = Math.ceil((new Date(batch.expiryDate) - now) / (1000 * 60 * 60 * 24));
+                await notifications.updateOne(
+                    { itemId: item._id, title: "Batch Expiring", message: { $regex: batch.id || '' } },
+                    { 
+                        $set: {
+                           message: `${item.name} (Batch #${batch.id || 'N/A'}) expires in ${daysLeft} days`,
+                           read: false, // Nag user again
+                           updatedAt: new Date()
+                        },
+                        $setOnInsert: { 
+                           title: "Batch Expiring",
+                           type: "expiry", 
+                           locationName: "Inventory", 
+                           createdAt: new Date() 
+                        }
+                    },
+                    { upsert: true }
+                );
+                expiryCount++;
+            }
+        }
+    }
+  }
+
+  return { 
+    status: "success", 
+    lowStockCount: lowStock.length, 
+    renewalCount: renewals.length,
+    expiringAlertsGenerated: expiryCount 
+  };
 };
 ```
 
 ---
 
-## 4. Pro Tip: Dynamic Summary
-Instead of 10 notifications, you can set the Shortcut to "Combine Text" and show one single dynamic summary of your morning tasks.
+## 4. Pro Tip: Dynamic Summary (All-in-One Message)
+Instead of getting 10 "ding" sounds, create a "Morning Report":
 
-> [!TIP]
-> Use the **Widget** on your iPhone Home Screen to trigger a "Check Inventory" scan every morning with one tap!
+1.  **Get Contents of URL** (API).
+2.  **Repeat with Each Item**:
+    *   Inside the loop, adding a **Text** action.
+    *   Insert variables: `🔴 [Title]: [Message]`.
+3.  **End Repeat**.
+4.  **Combine Text** (The results of the Repeat loop) with **New Lines**.
+5.  **Show Notification**:
+    *   **Body**: Pass the "Combined Text" here.
+
+-> Kết quả nó sẽ ra dạng list đẹp thế này:
+```text
+🔴 Low Stock: Sữa tươi is low (left: 1)
+🔴 Item Expiring: Trứng gà expires in 2 days
+🔴 Renewal: Netflix renews in 3 days
+```

@@ -5,7 +5,9 @@ export interface IItem extends Document {
     quantity: number;
     unit: string;
     location: mongoose.Types.ObjectId;
-    category: 'food' | 'electronics' | 'general' | 'medical' | 'clothing' | 'tools';
+    categoryId?: mongoose.Types.ObjectId; // Reference to Category model
+    category: 'food' | 'electronics' | 'general' | 'medical' | 'clothing' | 'tools'; // Legacy
+    customFields?: Map<string, any>; // Dynamic fields from Category
     owner?: string;
     purchaseDate?: Date;
     price?: number;
@@ -18,6 +20,7 @@ export interface IItem extends Document {
     itemInfo?: any;
     imageUrl?: string;
     barcode?: string;
+    isPublic?: boolean;
 
     // Electronics / Physical specs
     brand?: string;
@@ -31,6 +34,12 @@ export interface IItem extends Document {
         expiryDate?: Date;
         lastChecked: Date;
     }>;
+
+    quantityHistory: Array<{
+        qty: number;
+        date: Date;
+        note?: string;
+    }>;
 }
 
 const ItemSchema: Schema = new Schema({
@@ -38,11 +47,14 @@ const ItemSchema: Schema = new Schema({
     quantity: { type: Number, required: true, default: 0 },
     unit: { type: String, required: true, default: 'pcs' },
     location: { type: Schema.Types.ObjectId, ref: 'Location', required: true },
+    categoryId: { type: Schema.Types.ObjectId, ref: 'Category' },
     category: {
         type: String,
         enum: ['food', 'electronics', 'general', 'medical', 'clothing', 'tools'],
         default: 'general'
     },
+    customFields: { type: Map, of: Schema.Types.Mixed },
+
     owner: { type: String },
     purchaseDate: { type: Date },
     price: { type: Number, default: 0 },
@@ -59,6 +71,7 @@ const ItemSchema: Schema = new Schema({
     itemInfo: { type: Schema.Types.Mixed },
     imageUrl: { type: String },
     barcode: { type: String },
+    isPublic: { type: Boolean, default: false },
 
     // Sub-category fields (Electronics)
     brand: { type: String },
@@ -71,6 +84,12 @@ const ItemSchema: Schema = new Schema({
         quantity: { type: Number, required: true },
         expiryDate: { type: Date },
         lastChecked: { type: Date, default: Date.now }
+    }],
+
+    quantityHistory: [{
+        qty: { type: Number },
+        date: { type: Date, default: Date.now },
+        note: { type: String }
     }]
 }, {
     timestamps: true,

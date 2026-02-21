@@ -1,14 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import { useUser } from '@/contexts/UserContext';
 import ItemForm from '@/components/ItemForm';
 
 export default function EditItemPage() {
-    const router = useRouter();
     const { id } = useParams();
+    const router = useRouter();
+    const { name: userName } = useUser();
     const [locations, setLocations] = useState([]);
-    const [initialData, setInitialData] = useState(null);
+    const [initialData, setInitialData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -33,10 +35,11 @@ export default function EditItemPage() {
 
     const handleSubmit = async (formData: any) => {
         try {
+            const payload = { ...formData, performedBy: userName };
             const res = await fetch(`/api/items/${id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
+                body: JSON.stringify(payload)
             });
             if (res.ok) {
                 router.push('/items');

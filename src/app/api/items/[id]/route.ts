@@ -58,14 +58,17 @@ export async function PATCH(
             return NextResponse.json({ error: 'Item not found' }, { status: 404 });
         }
 
-        const item = await Item.findByIdAndUpdate(id, body, { new: true }).populate('location');
-
         // Log activity if quantity changed
         if (body.quantity !== undefined && body.quantity !== existingItem.quantity) {
+            // Push to quantityHistory for charting
+            body.$push = {
+                quantityHistory: { qty: body.quantity, date: new Date(), note: body.historyNote || undefined }
+            };
             await Activity.create({
                 itemId: id,
                 type: body.quantity > existingItem.quantity ? 'add' : 'remove',
                 amount: Math.abs(body.quantity - existingItem.quantity),
+                user: body.performedBy || 'Admin',
                 timestamp: new Date()
             });
         } else {
@@ -74,9 +77,14 @@ export async function PATCH(
                 itemId: id,
                 type: 'update',
                 amount: 0,
+                user: body.performedBy || 'Admin',
                 timestamp: new Date()
             });
         }
+
+        // Remove extra keys before update
+        delete body.historyNote;
+        const item = await Item.findByIdAndUpdate(id, body, { new: true }).populate('location');
 
         return NextResponse.json(item);
     } catch (error: any) {

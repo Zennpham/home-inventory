@@ -50,6 +50,7 @@ export async function POST(request: Request) {
             itemId: item._id,
             type: 'add',
             amount: item.quantity,
+            user: body.performedBy || 'Admin',
             timestamp: new Date()
         });
 
