@@ -143,36 +143,59 @@ export default function BlueprintMapPage() {
         finally { setSaving(false) }
     };
 
+    const activePointers = useRef<Map<number, { x: number, y: number }>>(new Map());
+    const initialDistance = useRef<number | null>(null);
+    const initialZoom = useRef<number>(1);
+
     const handleCanvasWheel = useCallback((e: React.WheelEvent) => {
-        e.preventDefault();
         if (e.ctrlKey || e.metaKey) {
-            // Pinch-to-zoom
             const delta = -e.deltaY / 300;
             setZoom(z => clampZoom(z + delta));
         } else {
-            // Scroll panning
             setPan(p => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
         }
     }, []);
 
     const handleCanvasPointerDown = useCallback((e: React.PointerEvent) => {
         if (isEditMode) return;
-        // Middle click or two-finger = pan
-        if (e.button === 1 || e.pointerType === 'touch') return;
-        isPanning.current = true;
-        panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    }, [isEditMode, pan]);
+        activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        if (activePointers.current.size === 1) {
+            isPanning.current = true;
+            panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+        } else if (activePointers.current.size === 2) {
+            isPanning.current = false;
+            const points = Array.from(activePointers.current.values());
+            const dist = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+            initialDistance.current = dist;
+            initialZoom.current = zoom;
+        }
+    }, [isEditMode, pan, zoom]);
 
     const handleCanvasPointerMove = useCallback((e: React.PointerEvent) => {
-        if (!isPanning.current) return;
-        const dx = e.clientX - panStart.current.x;
-        const dy = e.clientY - panStart.current.y;
-        setPan({ x: panStart.current.panX + dx, y: panStart.current.panY + dy });
+        activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        if (activePointers.current.size === 1 && isPanning.current) {
+            const dx = e.clientX - panStart.current.x;
+            const dy = e.clientY - panStart.current.y;
+            setPan({ x: panStart.current.panX + dx, y: panStart.current.panY + dy });
+        } else if (activePointers.current.size === 2 && initialDistance.current !== null) {
+            const points = Array.from(activePointers.current.values());
+            const dist = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+            const ratio = dist / initialDistance.current;
+            setZoom(clampZoom(initialZoom.current * ratio));
+        }
     }, []);
 
-    const handleCanvasPointerUp = useCallback(() => {
-        isPanning.current = false;
+    const handleCanvasPointerUp = useCallback((e: React.PointerEvent) => {
+        activePointers.current.delete(e.pointerId);
+        if (activePointers.current.size < 2) {
+            initialDistance.current = null;
+        }
+        if (activePointers.current.size === 0) {
+            isPanning.current = false;
+        }
     }, []);
 
     const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
@@ -203,7 +226,7 @@ export default function BlueprintMapPage() {
                     <div>
                         <h1 className="text-xl font-black">{parentNode ? parentNode.name : 'Bản đồ 2D'}</h1>
                         <p className="text-xs text-zinc-500">
-                            {isEditMode ? 'Kéo để di chuyển • Kéo góc dưới phải để thay đổi kích thước' : 'Nhấp vào một khu vực để xem chi tiết bên trong'}
+                            {isEditMode ? 'Kéo để di chuyển • Kéo góc để đổi kích thước' : '1 ngón để di chuyển • 2 ngón để phóng to/thu nhỏ'}
                         </p>
                     </div>
                 </div>
@@ -335,10 +358,10 @@ export default function BlueprintMapPage() {
                                     {/* Resize Handle */}
                                     {isEditMode && (
                                         <div
-                                            className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize flex items-end justify-end p-1 z-10"
+                                            className="absolute bottom-0 right-0 w-8 h-8 cursor-nwse-resize flex items-end justify-end p-1 z-10"
                                             onPointerDown={(e) => handleResize(loc._id, e)}
                                         >
-                                            <div className="w-2.5 h-2.5 bg-black/20 dark:bg-white/20 rounded-tl-sm rounded-br-sm pointer-events-none"></div>
+                                            <div className="w-3 h-3 bg-zinc-400 dark:bg-zinc-500 rounded-tl-sm rounded-br-sm pointer-events-none"></div>
                                         </div>
                                     )}
                                 </motion.div>
@@ -347,10 +370,11 @@ export default function BlueprintMapPage() {
                     </div>
                 </div>
 
-                {/* Zoom hint overlay */}
+                {/* Interaction hint overlay */}
                 {!isEditMode && (
                     <div className="absolute bottom-3 right-3 text-[9px] text-zinc-400 bg-white/70 dark:bg-black/50 backdrop-blur-sm px-2 py-1 rounded-lg pointer-events-none">
-                        Scroll = Pan • Ctrl+Scroll = Zoom • Double-click = Reset
+                        <span className="hidden sm:inline">Cuộn = Di chuyển • Ctrl+Cuộn = Thu phóng • </span>
+                        <span>Dùng 2 ngón tay để thu phóng trên điện thoại</span>
                     </div>
                 )}
             </div>
